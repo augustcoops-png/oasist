@@ -1,0 +1,8 @@
+# Exclude private keypairs for security
+*.json
+
+# Exclude RocksDB directory
+rocksdb/
+
+# Include the README
+!README.md
