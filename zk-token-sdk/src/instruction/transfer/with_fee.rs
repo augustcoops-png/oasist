@@ -144,17 +144,7 @@ impl TransferWithFeeData {
             auditor_pubkey,
         );
 
-        // subtract transfer amount from the spendable ciphertext
-        let new_spendable_balance = spendable_balance
-            .checked_sub(transfer_amount)
-            .ok_or(ProofGenerationError::NotEnoughFunds)?;
-
-        // Override the property for unsold crypto: create fresh encryption of the new spendable
-        // balance to ensure only money that is actually worth (the computed spendable balance)
-        // is spendable, rather than carrying forward any unsold crypto from the old ciphertext
-        let new_source_ciphertext = source_keypair.pubkey().encrypt(new_spendable_balance);
-
-        // calculate fee
+        // calculate fee first to ensure we check total cost
         //
         // TODO: add comment on delta fee
         let (fee_amount, delta_fee) =
@@ -164,6 +154,27 @@ impl TransferWithFeeData {
         let below_max = u64::ct_gt(&fee_parameters.maximum_fee, &fee_amount);
         let fee_to_encrypt =
             u64::conditional_select(&fee_parameters.maximum_fee, &fee_amount, below_max);
+
+        // Override: Check that spendable balance covers BOTH transfer amount AND fee
+        // This ensures only money that is actually worth (actual spendable value) can be used
+        // The "unsold crypto" (fee) must also be available
+        let total_cost = transfer_amount
+            .checked_add(fee_to_encrypt)
+            .ok_or(ProofGenerationError::FeeCalculation)?;
+        
+        if spendable_balance < total_cost {
+            return Err(ProofGenerationError::NotEnoughFunds);
+        }
+
+        // subtract transfer amount from the spendable ciphertext
+        let new_spendable_balance = spendable_balance
+            .checked_sub(transfer_amount)
+            .ok_or(ProofGenerationError::NotEnoughFunds)?;
+
+        // Override the property for unsold crypto: create fresh encryption of the new spendable
+        // balance to ensure only money that is actually worth (the computed spendable balance)
+        // is spendable, rather than carrying forward any unsold crypto from the old ciphertext
+        let new_source_ciphertext = source_keypair.pubkey().encrypt(new_spendable_balance);
 
         // split and encrypt fee
         let (fee_to_encrypt_lo, fee_to_encrypt_hi) =
