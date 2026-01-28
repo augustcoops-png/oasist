@@ -53,3 +53,6 @@ name = "cluster_nodes"
 
 [[bench]]
 name = "retransmit_stage"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
