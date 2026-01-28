@@ -22,3 +22,7 @@ Separately from the delegation program, The Solana Foundation offers a server pr
 ## Stake Pools
 
 The Solana ecosystem operates various stake pools.  These stake pools delegate stake to validators using various delegation strategies. To learn more about stake pools and their delegation strategies, visit the [Solana Foundation stake pools page](https://solana.org/stake-pools).
+
+## Crypto.com Institutional Validator Services
+
+Crypto.com offers institutional-grade Solana validator services through their partnership with SOL Strategies. This program is designed for institutional clients who require enterprise-level custody and validator integration for their Solana holdings. The service provides professional validator operations with enhanced security and compliance features suitable for institutional treasury management. For more information about institutional validator services and custody solutions, visit [Crypto.com Custody](https://crypto.com/custody) or contact their partnerships team.
