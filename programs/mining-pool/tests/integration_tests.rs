@@ -179,7 +179,7 @@ fn test_pool_operator_serialization() {
     let mut op = PoolOperator::new(operator, 0);
     
     let pool1 = Pubkey::new_unique();
-    op.add_pool(pool1);
+    op.add_pool(pool1).unwrap();
 
     // Test serialization
     let serialized = bincode::serialize(&op).unwrap();

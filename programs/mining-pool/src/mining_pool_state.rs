@@ -1,4 +1,8 @@
 //! Mining Pool state definitions
+//! 
+//! Note: "Mining pool" terminology is used for consistency with the issue description,
+//! but this refers to stake pooling for validators in Solana's Proof of Stake system,
+//! not traditional Proof of Work mining.
 
 use {
     serde::{Deserialize, Serialize},
@@ -10,6 +14,9 @@ use {
 
 /// Maximum number of workers that can be linked to a mining pool
 pub const MAX_POOL_WORKERS: usize = 1000;
+
+/// Maximum number of pools that can be managed by a single operator
+pub const MAX_MANAGED_POOLS: usize = 100;
 
 /// Mining Pool State
 /// Links a pool operator to a vote account and manages pool workers
@@ -134,10 +141,15 @@ impl PoolOperator {
     }
     
     /// Add a pool to the operator's managed pools
-    pub fn add_pool(&mut self, pool: Pubkey) {
+    /// Returns error if maximum pools limit reached
+    pub fn add_pool(&mut self, pool: Pubkey) -> Result<(), ()> {
+        if self.managed_pools.len() >= MAX_MANAGED_POOLS {
+            return Err(());
+        }
         if !self.managed_pools.contains(&pool) {
             self.managed_pools.push(pool);
         }
+        Ok(())
     }
     
     /// Remove a pool from the operator's managed pools
@@ -193,18 +205,34 @@ mod tests {
         let pool1 = Pubkey::new_unique();
         let pool2 = Pubkey::new_unique();
         
-        op.add_pool(pool1);
+        assert!(op.add_pool(pool1).is_ok());
         assert_eq!(op.managed_pools.len(), 1);
         
-        op.add_pool(pool2);
+        assert!(op.add_pool(pool2).is_ok());
         assert_eq!(op.managed_pools.len(), 2);
         
         // Adding same pool shouldn't duplicate
-        op.add_pool(pool1);
+        assert!(op.add_pool(pool1).is_ok());
         assert_eq!(op.managed_pools.len(), 2);
         
         op.remove_pool(&pool1);
         assert_eq!(op.managed_pools.len(), 1);
         assert_eq!(op.managed_pools[0], pool2);
+    }
+    
+    #[test]
+    fn test_pool_operator_max_pools_limit() {
+        let operator = Pubkey::new_unique();
+        let mut op = PoolOperator::new(operator, 0);
+        
+        // Add up to MAX_MANAGED_POOLS
+        for _ in 0..MAX_MANAGED_POOLS {
+            let pool = Pubkey::new_unique();
+            assert!(op.add_pool(pool).is_ok());
+        }
+        
+        // Next one should fail
+        let pool = Pubkey::new_unique();
+        assert!(op.add_pool(pool).is_err());
     }
 }

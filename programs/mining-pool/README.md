@@ -2,6 +2,8 @@
 
 The Mining Pool Program provides functionality for linking mining pools, pool workers, and pool operators in the Solana blockchain ecosystem.
 
+> **Note**: This program uses "mining pool" terminology for consistency with the requirements, but it actually implements stake pooling for validators in Solana's Proof of Stake consensus system, not traditional Proof of Work mining.
+
 ## Overview
 
 This program enables:
@@ -10,6 +12,11 @@ This program enables:
 - **Operator Management**: Track and manage multiple pools under a single operator
 - **Commission Control**: Configure and update pool commission rates
 - **Pool/Worker Lifecycle**: Activate and deactivate pools and workers
+
+## Limits
+
+- **MAX_POOL_WORKERS**: 1,000 workers per pool
+- **MAX_MANAGED_POOLS**: 100 pools per operator
 
 ## Architecture
 
@@ -150,6 +157,10 @@ let ix2 = register_worker(
 - Workers can only be deactivated by the staker or pool operator
 - Commission rates are validated to be within 0-100%
 - All state changes are validated before execution
+- Stake amounts must be non-zero
+- Worker and pool limits are enforced
+- Authorization checks use MissingRequiredSignature error for better debugging
+- Pool account matching is verified for worker operations
 
 ## Program ID
 

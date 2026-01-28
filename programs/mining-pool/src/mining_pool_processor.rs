@@ -82,8 +82,12 @@ fn process_initialize_pool(
     }
     
     // Check if pool account is already initialized
+    // A proper check: data should be empty or have zero length for a new account
     if pool_account.get_data().len() > 0 {
-        return Err(InstructionError::AccountAlreadyInitialized);
+        // Verify data is all zeros if length > 0
+        if !pool_account.get_data().iter().all(|&b| b == 0) {
+            return Err(InstructionError::AccountAlreadyInitialized);
+        }
     }
     
     // Get clock for epoch
@@ -128,9 +132,17 @@ fn process_register_worker(
     let mut pool_account = instruction_context
         .try_borrow_instruction_account(transaction_context, 3)?;
     
+    // Validate stake amount is non-zero
+    if stake_amount == 0 {
+        return Err(InstructionError::InvalidArgument);
+    }
+    
     // Check if worker account is already initialized
     if worker_account.get_data().len() > 0 {
-        return Err(InstructionError::AccountAlreadyInitialized);
+        // Verify data is all zeros if length > 0
+        if !worker_account.get_data().iter().all(|&b| b == 0) {
+            return Err(InstructionError::AccountAlreadyInitialized);
+        }
     }
     
     // Deserialize pool state
@@ -142,10 +154,15 @@ fn process_register_worker(
         return Err(InstructionError::InvalidAccountData);
     }
     
+    // Check worker limit
+    if pool_state.worker_count >= crate::mining_pool_state::MAX_POOL_WORKERS as u32 {
+        return Err(InstructionError::InvalidArgument);
+    }
+    
     // Get clock for epoch
     let clock = invoke_context.get_sysvar_cache().get_clock()?;
     
-    // Create new worker
+    // Create new worker - verify pool_account matches
     let worker = PoolWorker::new(
         *staker_account.get_key(),
         *stake_account.get_key(),
@@ -235,15 +252,16 @@ fn process_link_pool_to_operator(
     
     // Verify authority
     if operator.operator != *operator_authority.get_key() {
-        return Err(InstructionError::InvalidAccountData);
+        return Err(InstructionError::MissingRequiredSignature);
     }
     
     // Deserialize pool to verify it exists and get its stake
     let pool_state: MiningPoolState = bincode::deserialize(pool_account.get_data())
         .map_err(|_| InstructionError::InvalidAccountData)?;
     
-    // Add pool to operator
-    operator.add_pool(*pool_account.get_key());
+    // Add pool to operator (check maximum limit)
+    operator.add_pool(*pool_account.get_key())
+        .map_err(|_| InstructionError::InvalidArgument)?;
     operator.total_managed_stake = operator.total_managed_stake
         .saturating_add(pool_state.total_delegated_stake);
     
@@ -285,7 +303,7 @@ fn process_update_pool_commission(
     
     // Verify authority
     if pool_state.operator != *operator_authority.get_key() {
-        return Err(InstructionError::InvalidAccountData);
+        return Err(InstructionError::MissingRequiredSignature);
     }
     
     // Update commission
@@ -326,9 +344,14 @@ fn process_deactivate_worker(
     let mut pool_state: MiningPoolState = bincode::deserialize(pool_account.get_data())
         .map_err(|_| InstructionError::InvalidAccountData)?;
     
+    // Verify worker's pool_account matches the provided pool_account
+    if worker.pool_account != *pool_account.get_key() {
+        return Err(InstructionError::InvalidAccountData);
+    }
+    
     // Verify authority (must be staker or pool operator)
     if worker.staker != *authority.get_key() && pool_state.operator != *authority.get_key() {
-        return Err(InstructionError::InvalidAccountData);
+        return Err(InstructionError::MissingRequiredSignature);
     }
     
     // Deactivate worker
@@ -372,7 +395,7 @@ fn process_deactivate_pool(
     
     // Verify authority
     if pool_state.operator != *operator_authority.get_key() {
-        return Err(InstructionError::InvalidAccountData);
+        return Err(InstructionError::MissingRequiredSignature);
     }
     
     // Deactivate pool
