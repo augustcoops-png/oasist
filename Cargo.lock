@@ -6423,6 +6423,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-mining-pool-program"
+version = "2.0.0"
+dependencies = [
+ "assert_matches",
+ "bincode",
+ "log",
+ "rustc_version 0.4.0",
+ "serde",
+ "solana-logger",
+ "solana-program-runtime",
+ "solana-sdk",
+ "solana-stake-program",
+ "solana-vote-program",
+]
+
+[[package]]
 name = "solana-net-shaper"
 version = "2.0.0"
 dependencies = [
