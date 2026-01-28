@@ -9,7 +9,7 @@ use {
         instruction::{
             errors::InstructionError,
             transfer::{
-                encryption::TransferAmountCiphertext, try_combine_lo_hi_ciphertexts, try_split_u64,
+                encryption::TransferAmountCiphertext, try_split_u64,
                 Role,
             },
         },
@@ -92,7 +92,7 @@ impl TransferData {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         transfer_amount: u64,
-        (spendable_balance, ciphertext_old_source): (u64, &ElGamalCiphertext),
+        (spendable_balance, _ciphertext_old_source): (u64, &ElGamalCiphertext),
         source_keypair: &ElGamalKeypair,
         (destination_pubkey, auditor_pubkey): (&ElGamalPubkey, &ElGamalPubkey),
     ) -> Result<Self, ProofGenerationError> {
@@ -119,23 +119,10 @@ impl TransferData {
             .checked_sub(transfer_amount)
             .ok_or(ProofGenerationError::NotEnoughFunds)?;
 
-        let transfer_amount_lo_source = ElGamalCiphertext {
-            commitment: *ciphertext_lo.get_commitment(),
-            handle: *ciphertext_lo.get_source_handle(),
-        };
-
-        let transfer_amount_hi_source = ElGamalCiphertext {
-            commitment: *ciphertext_hi.get_commitment(),
-            handle: *ciphertext_hi.get_source_handle(),
-        };
-
-        let new_source_ciphertext = ciphertext_old_source
-            - try_combine_lo_hi_ciphertexts(
-                &transfer_amount_lo_source,
-                &transfer_amount_hi_source,
-                TRANSFER_AMOUNT_LO_BITS,
-            )
-            .map_err(|_| ProofGenerationError::IllegalAmountBitLength)?;
+        // Override the property for unsold crypto: create fresh encryption of the new spendable
+        // balance to ensure only money that is actually worth (the computed spendable balance)
+        // is spendable, rather than carrying forward any unsold crypto from the old ciphertext
+        let new_source_ciphertext = source_keypair.pubkey().encrypt(new_spendable_balance);
 
         // generate transcript and append all public inputs
         let pod_transfer_pubkeys = TransferPubkeys {

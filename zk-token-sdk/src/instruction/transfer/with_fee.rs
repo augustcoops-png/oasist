@@ -10,7 +10,7 @@ use {
             errors::InstructionError,
             transfer::{
                 encryption::{FeeEncryption, TransferAmountCiphertext},
-                try_combine_lo_hi_ciphertexts, try_combine_lo_hi_commitments,
+                try_combine_lo_hi_commitments,
                 try_combine_lo_hi_openings, try_combine_lo_hi_u64, try_split_u64, FeeParameters,
                 Role,
             },
@@ -121,7 +121,7 @@ pub struct TransferWithFeePubkeys {
 impl TransferWithFeeData {
     pub fn new(
         transfer_amount: u64,
-        (spendable_balance, old_source_ciphertext): (u64, &ElGamalCiphertext),
+        (spendable_balance, _old_source_ciphertext): (u64, &ElGamalCiphertext),
         source_keypair: &ElGamalKeypair,
         (destination_pubkey, auditor_pubkey): (&ElGamalPubkey, &ElGamalPubkey),
         fee_parameters: FeeParameters,
@@ -149,23 +149,10 @@ impl TransferWithFeeData {
             .checked_sub(transfer_amount)
             .ok_or(ProofGenerationError::NotEnoughFunds)?;
 
-        let transfer_amount_lo_source = ElGamalCiphertext {
-            commitment: *ciphertext_lo.get_commitment(),
-            handle: *ciphertext_lo.get_source_handle(),
-        };
-
-        let transfer_amount_hi_source = ElGamalCiphertext {
-            commitment: *ciphertext_hi.get_commitment(),
-            handle: *ciphertext_hi.get_source_handle(),
-        };
-
-        let new_source_ciphertext = old_source_ciphertext
-            - try_combine_lo_hi_ciphertexts(
-                &transfer_amount_lo_source,
-                &transfer_amount_hi_source,
-                TRANSFER_AMOUNT_LO_BITS,
-            )
-            .map_err(|_| ProofGenerationError::IllegalAmountBitLength)?;
+        // Override the property for unsold crypto: create fresh encryption of the new spendable
+        // balance to ensure only money that is actually worth (the computed spendable balance)
+        // is spendable, rather than carrying forward any unsold crypto from the old ciphertext
+        let new_source_ciphertext = source_keypair.pubkey().encrypt(new_spendable_balance);
 
         // calculate fee
         //
