@@ -28,7 +28,9 @@ This directory contains a newly generated Solana genesis configuration for a dev
 
 ## How This Was Created
 
-The genesis file was created using the `solana-genesis` binary with the following steps:
+The genesis file was created using the `solana-genesis` binary with the following steps.
+
+**Note**: All commands below should be run from the repository root directory.
 
 1. Built the required binaries:
    ```bash
@@ -74,3 +76,7 @@ cp genesis-output/genesis.tar.bz2 /path/to/validator/ledger/
 ## Security Note
 
 ⚠️ **WARNING**: The keypair files in this directory contain private keys. This genesis configuration is for development purposes only. Never use these keypairs or this genesis configuration in a production environment or with real funds.
+
+## Regeneration
+
+The genesis binary files (genesis.bin and genesis.tar.bz2) can be regenerated at any time by following the steps in the "How This Was Created" section above. The binary files are included in the repository for convenience, but they contain no sensitive information beyond what is documented in this README.
