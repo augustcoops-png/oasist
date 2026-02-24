@@ -47,6 +47,7 @@ members = [
     "local-cluster",
     "log-analyzer",
     "logger",
+    "market",
     "measure",
     "memory-management",
     "merkle-root-bench",

@@ -1,0 +1,21 @@
+[package]
+name = "solana-market"
+description = "Solana Market Data"
+documentation = "https://docs.rs/solana-market"
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+reqwest = { workspace = true, features = ["blocking", "rustls-tls", "json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[lib]
+name = "solana_market"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
