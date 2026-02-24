@@ -67,6 +67,7 @@ members = [
     "programs/bpf_loader/gen-syscall-list",
     "programs/compute-budget",
     "programs/config",
+    "programs/oracle-adapter",
     "programs/ed25519-tests",
     "programs/loader-v4",
     "programs/stake",
@@ -325,6 +326,7 @@ solana-cli-output = { path = "cli-output", version = "=2.0.0" }
 solana-client = { path = "client", version = "=2.0.0" }
 solana-compute-budget-program = { path = "programs/compute-budget", version = "=2.0.0" }
 solana-config-program = { path = "programs/config", version = "=2.0.0" }
+solana-oracle-adapter = { path = "programs/oracle-adapter", version = "=2.0.0" }
 solana-connection-cache = { path = "connection-cache", version = "=2.0.0", default-features = false }
 solana-core = { path = "core", version = "=2.0.0" }
 solana-cost-model = { path = "cost-model", version = "=2.0.0" }
