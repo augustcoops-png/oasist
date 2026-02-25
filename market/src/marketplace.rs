@@ -3,6 +3,11 @@
 //! Implements a **central limit order book (CLOB)** with a price-time-priority
 //! matching engine.  Both limit and market orders are supported.
 //!
+//! An optional **daily price band** can be attached to cap how far the market
+//! may move in one session.  By default the band is ±5 %; when the market is
+//! "on a roll" (a configurable streak of consecutive up-ticks) the upside cap
+//! expands to 20 % while the downside protection stays at 5 %.
+//!
 //! # Quick start
 //!
 //! ```
@@ -11,11 +16,11 @@
 //! let mut engine = MatchingEngine::new();
 //!
 //! // Post a resting limit sell at 100.00 for 2.0 units
-//! let (ask, _) = engine.submit_order(OrderSide::Sell, OrderType::Limit, Some(100.0), 2.0);
+//! let (ask, _) = engine.submit_order(OrderSide::Sell, OrderType::Limit, Some(100.0), 2.0).unwrap();
 //! assert_eq!(ask.status, OrderStatus::Open);
 //!
 //! // Incoming limit buy at 100.00 for 1.0 unit — matches immediately
-//! let (bid, trades) = engine.submit_order(OrderSide::Buy, OrderType::Limit, Some(100.0), 1.0);
+//! let (bid, trades) = engine.submit_order(OrderSide::Buy, OrderType::Limit, Some(100.0), 1.0).unwrap();
 //! assert_eq!(trades.len(), 1);
 //! assert_eq!(bid.status, OrderStatus::Filled);
 //! ```
@@ -23,6 +28,7 @@
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, VecDeque},
+    fmt,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +177,176 @@ impl Trade {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Errors
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Errors returned by [`MatchingEngine::submit_order`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum MarketplaceError {
+    /// The limit price falls outside the session's allowed price band.
+    PriceBandViolation {
+        /// The submitted limit price (quote units).
+        price: f64,
+        /// Lower boundary of today's allowed band.
+        lower_limit: f64,
+        /// Upper boundary of today's allowed band.
+        upper_limit: f64,
+    },
+}
+
+impl fmt::Display for MarketplaceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MarketplaceError::PriceBandViolation {
+                price,
+                lower_limit,
+                upper_limit,
+            } => write!(
+                f,
+                "price {price:.6} is outside the allowed daily band \
+                 [{lower_limit:.6}, {upper_limit:.6}]"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for MarketplaceError {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Price band
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// An asymmetric daily price-change limit attached to a [`MatchingEngine`].
+///
+/// * **Downside** is always capped at `max_down_pct` below the reference price
+///   (default 5 %).
+/// * **Normal upside** is capped at `normal_up_pct` above the reference price
+///   (default 5 %).
+/// * **Momentum upside** — when the market is "on a roll" (the last
+///   `streak_threshold` consecutive trades were each at a higher price than the
+///   previous one) — the upper cap expands to `momentum_up_pct` above the
+///   reference price (default 20 %).
+///
+/// # Example
+///
+/// ```
+/// use solana_market::marketplace::PriceBand;
+///
+/// // ±5 % band; expands to +20 % upside after 3 consecutive up-ticks.
+/// let band = PriceBand::new(100.0, 5.0);
+/// assert!((band.lower_limit() - 95.0).abs() < 1e-4);
+/// assert!((band.upper_limit() - 105.0).abs() < 1e-4); // no streak yet
+/// ```
+#[derive(Debug, Clone)]
+pub struct PriceBand {
+    /// Reference (opening) price in micro-units.
+    reference: Price,
+    /// Maximum allowed downside move as a fraction (e.g. 0.05 = 5 %).
+    max_down_pct: f64,
+    /// Normal upside cap as a fraction (e.g. 0.05 = 5 %).
+    normal_up_pct: f64,
+    /// Momentum upside cap as a fraction (e.g. 0.20 = 20 %).
+    momentum_up_pct: f64,
+    /// Number of consecutive up-ticks required to activate the momentum cap.
+    streak_threshold: usize,
+    /// Rolling window of recent trade prices (micro-units), newest at back.
+    recent_prices: VecDeque<Price>,
+}
+
+impl PriceBand {
+    /// Create a price band with symmetric normal limits of `max_change_pct` %,
+    /// a 20 % momentum upside cap, and a 3-trade streak threshold.
+    ///
+    /// * `reference`      — today's reference (opening) price in quote units
+    /// * `max_change_pct` — normal max daily move in percent (e.g. `5.0`)
+    pub fn new(reference: f64, max_change_pct: f64) -> Self {
+        Self::with_config(reference, max_change_pct, max_change_pct, 20.0, 3)
+    }
+
+    /// Create a fully-configured price band.
+    ///
+    /// * `reference`        — today's reference price in quote units
+    /// * `max_down_pct`     — maximum downside move in percent
+    /// * `normal_up_pct`    — normal maximum upside move in percent
+    /// * `momentum_up_pct`  — upside cap when on a roll, in percent
+    /// * `streak_threshold` — consecutive up-ticks needed to be "on a roll"
+    pub fn with_config(
+        reference: f64,
+        max_down_pct: f64,
+        normal_up_pct: f64,
+        momentum_up_pct: f64,
+        streak_threshold: usize,
+    ) -> Self {
+        Self {
+            reference: to_price(reference),
+            max_down_pct: max_down_pct / 100.0,
+            normal_up_pct: normal_up_pct / 100.0,
+            momentum_up_pct: momentum_up_pct / 100.0,
+            streak_threshold,
+            recent_prices: VecDeque::new(),
+        }
+    }
+
+    /// Reference (opening) price in quote units.
+    pub fn reference_price(&self) -> f64 {
+        from_price(self.reference)
+    }
+
+    /// Lower boundary of the allowed band (quote units).
+    pub fn lower_limit(&self) -> f64 {
+        from_price(self.reference) * (1.0 - self.max_down_pct)
+    }
+
+    /// Upper boundary of the allowed band (quote units).
+    ///
+    /// Returns the momentum cap when the market is on a roll, otherwise the
+    /// normal cap.
+    pub fn upper_limit(&self) -> f64 {
+        let pct = if self.is_on_a_roll() {
+            self.momentum_up_pct
+        } else {
+            self.normal_up_pct
+        };
+        from_price(self.reference) * (1.0 + pct)
+    }
+
+    /// `true` if `price` (quote units) falls within `[lower_limit, upper_limit]`.
+    pub fn allows(&self, price: f64) -> bool {
+        price >= self.lower_limit() && price <= self.upper_limit()
+    }
+
+    /// `true` when the last `streak_threshold` trades were each at a strictly
+    /// higher price than the previous one.
+    pub fn is_on_a_roll(&self) -> bool {
+        if self.recent_prices.len() < self.streak_threshold {
+            return false;
+        }
+        self.recent_prices
+            .iter()
+            .zip(self.recent_prices.iter().skip(1))
+            .all(|(a, b)| b > a)
+    }
+
+    /// Record an execution price from a completed trade.
+    ///
+    /// Maintains a rolling window of `streak_threshold` prices so that
+    /// [`is_on_a_roll`](Self::is_on_a_roll) can be evaluated efficiently.
+    pub fn record_trade(&mut self, exec_price: Price) {
+        self.recent_prices.push_back(exec_price);
+        while self.recent_prices.len() > self.streak_threshold {
+            self.recent_prices.pop_front();
+        }
+    }
+
+    /// Reset the reference price for a new trading session and clear the
+    /// momentum streak.
+    pub fn reset(&mut self, new_reference: f64) {
+        self.reference = to_price(new_reference);
+        self.recent_prices.clear();
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Order book
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -275,21 +451,25 @@ pub struct MatchingEngine {
     /// The underlying order book.  Exposed for read-only queries.
     pub order_book: OrderBook,
     next_id: OrderId,
+    price_band: Option<PriceBand>,
 }
 
 impl MatchingEngine {
-    /// Create a new engine with an empty order book.
+    /// Create a new engine with an empty order book and no price band.
     pub fn new() -> Self {
         Self {
             order_book: OrderBook::new(),
             next_id: 1,
+            price_band: None,
         }
     }
 
     /// Submit an order to the engine.
     ///
-    /// Returns a `(order_snapshot, trades)` tuple where `order_snapshot`
-    /// reflects the order state immediately after initial matching.
+    /// Returns `Ok((order_snapshot, trades))` on success, where
+    /// `order_snapshot` reflects the order state immediately after initial
+    /// matching.  Returns `Err` if a price band is active and the limit price
+    /// falls outside it.
     ///
     /// | Parameter    | Description |
     /// |---|---|
@@ -303,7 +483,20 @@ impl MatchingEngine {
         order_type: OrderType,
         price: Option<f64>,
         quantity: f64,
-    ) -> (Order, Vec<Trade>) {
+    ) -> Result<(Order, Vec<Trade>), MarketplaceError> {
+        // Enforce daily price band for limit orders.
+        if let (OrderType::Limit, Some(limit_price)) = (order_type, price) {
+            if let Some(band) = &self.price_band {
+                if !band.allows(limit_price) {
+                    return Err(MarketplaceError::PriceBandViolation {
+                        price: limit_price,
+                        lower_limit: band.lower_limit(),
+                        upper_limit: band.upper_limit(),
+                    });
+                }
+            }
+        }
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -322,6 +515,13 @@ impl MatchingEngine {
             OrderSide::Sell => self.match_sell(&mut order),
         };
 
+        // Record execution prices into the price band for momentum tracking.
+        if let Some(band) = &mut self.price_band {
+            for trade in &trades {
+                band.record_trade(trade.price);
+            }
+        }
+
         if order.remaining() > 0 {
             match order_type {
                 OrderType::Limit => match side {
@@ -335,7 +535,7 @@ impl MatchingEngine {
             }
         }
 
-        (order, trades)
+        Ok((order, trades))
     }
 
     /// Cancel a resting order by its `order_id` and `side`.
@@ -382,9 +582,41 @@ impl MatchingEngine {
         }
     }
 
-    // ── Internal matching helpers ──────────────────────────────────────────
+    // ── Price band management ──────────────────────────────────────────────
 
-    /// Match an incoming buy order against resting asks (lowest ask first).
+    /// Attach a [`PriceBand`] built with [`PriceBand::new`] (±`max_change_pct` %
+    /// normal limits, 20 % momentum upside cap, 3-trade streak threshold).
+    ///
+    /// * `reference`      — today's opening/reference price in quote units
+    /// * `max_change_pct` — normal max daily move in percent (e.g. `5.0`)
+    pub fn set_price_band(&mut self, reference: f64, max_change_pct: f64) {
+        self.price_band = Some(PriceBand::new(reference, max_change_pct));
+    }
+
+    /// Attach a fully-configured [`PriceBand`].
+    pub fn set_price_band_custom(&mut self, band: PriceBand) {
+        self.price_band = Some(band);
+    }
+
+    /// Remove the price band so all prices are accepted.
+    pub fn clear_price_band(&mut self) {
+        self.price_band = None;
+    }
+
+    /// Reset the price band's reference price and clear the momentum streak,
+    /// e.g. at the start of a new trading day.  No-op if no band is set.
+    pub fn reset_daily_reference(&mut self, new_reference: f64) {
+        if let Some(band) = &mut self.price_band {
+            band.reset(new_reference);
+        }
+    }
+
+    /// Read-only access to the current price band, if any.
+    pub fn price_band(&self) -> Option<&PriceBand> {
+        self.price_band.as_ref()
+    }
+
+    // ── Internal matching helpers ──────────────────────────────────────────
     fn match_buy(&mut self, incoming: &mut Order) -> Vec<Trade> {
         let mut trades = Vec::new();
         let mut empty_keys: Vec<Price> = Vec::new();
@@ -543,19 +775,19 @@ mod tests {
     // ── Helpers ────────────────────────────────────────────────────────────
 
     fn limit_buy(engine: &mut MatchingEngine, price: f64, qty: f64) -> (Order, Vec<Trade>) {
-        engine.submit_order(OrderSide::Buy, OrderType::Limit, Some(price), qty)
+        engine.submit_order(OrderSide::Buy, OrderType::Limit, Some(price), qty).unwrap()
     }
 
     fn limit_sell(engine: &mut MatchingEngine, price: f64, qty: f64) -> (Order, Vec<Trade>) {
-        engine.submit_order(OrderSide::Sell, OrderType::Limit, Some(price), qty)
+        engine.submit_order(OrderSide::Sell, OrderType::Limit, Some(price), qty).unwrap()
     }
 
     fn market_buy(engine: &mut MatchingEngine, qty: f64) -> (Order, Vec<Trade>) {
-        engine.submit_order(OrderSide::Buy, OrderType::Market, None, qty)
+        engine.submit_order(OrderSide::Buy, OrderType::Market, None, qty).unwrap()
     }
 
     fn market_sell(engine: &mut MatchingEngine, qty: f64) -> (Order, Vec<Trade>) {
-        engine.submit_order(OrderSide::Sell, OrderType::Market, None, qty)
+        engine.submit_order(OrderSide::Sell, OrderType::Market, None, qty).unwrap()
     }
 
     // ── Basic order placement ──────────────────────────────────────────────
@@ -822,5 +1054,232 @@ mod tests {
             let rounded = from_quantity(to_quantity(val));
             assert!((rounded - val).abs() < 1e-6, "{val} round-trip failed");
         }
+    }
+
+    // ── Price band — basic limits ──────────────────────────────────────────
+
+    #[test]
+    fn band_lower_and_upper_limits() {
+        let band = PriceBand::new(100.0, 5.0);
+        assert!((band.lower_limit() - 95.0).abs() < 1e-4);
+        // No streak yet → normal 5 % cap.
+        assert!((band.upper_limit() - 105.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn band_accepts_price_inside_range() {
+        let band = PriceBand::new(100.0, 5.0);
+        assert!(band.allows(100.0));
+        assert!(band.allows(95.0));
+        assert!(band.allows(105.0));
+    }
+
+    #[test]
+    fn band_rejects_price_above_normal_cap() {
+        let band = PriceBand::new(100.0, 5.0);
+        assert!(!band.allows(105.01));
+        assert!(!band.allows(120.0));
+    }
+
+    #[test]
+    fn band_rejects_price_below_lower_limit() {
+        let band = PriceBand::new(100.0, 5.0);
+        assert!(!band.allows(94.99));
+        assert!(!band.allows(50.0));
+    }
+
+    // ── Engine rejects out-of-band limit orders ────────────────────────────
+
+    #[test]
+    fn engine_rejects_limit_buy_above_band() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+        let err = e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(110.0), 1.0)
+            .unwrap_err();
+        match err {
+            MarketplaceError::PriceBandViolation { price, .. } => {
+                assert!((price - 110.0).abs() < 1e-4);
+            }
+        }
+    }
+
+    #[test]
+    fn engine_rejects_limit_sell_below_band() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+        let err = e
+            .submit_order(OrderSide::Sell, OrderType::Limit, Some(90.0), 1.0)
+            .unwrap_err();
+        match err {
+            MarketplaceError::PriceBandViolation { price, .. } => {
+                assert!((price - 90.0).abs() < 1e-4);
+            }
+        }
+    }
+
+    #[test]
+    fn engine_accepts_limit_order_on_band_boundary() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+        // Exactly at the lower and upper boundaries should be accepted.
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(95.0), 1.0)
+            .is_ok());
+        assert!(e
+            .submit_order(OrderSide::Sell, OrderType::Limit, Some(105.0), 1.0)
+            .is_ok());
+    }
+
+    #[test]
+    fn engine_accepts_market_order_regardless_of_band() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+        // Market orders have no explicit price — they are always accepted.
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Market, None, 1.0)
+            .is_ok());
+    }
+
+    #[test]
+    fn no_band_accepts_any_price() {
+        let mut e = MatchingEngine::new(); // no band
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(999.0), 1.0)
+            .is_ok());
+    }
+
+    // ── Momentum ("on a roll") — upside expands to 20 % ───────────────────
+
+    #[test]
+    fn not_on_a_roll_without_enough_trades() {
+        let mut band = PriceBand::new(100.0, 5.0); // streak_threshold = 3
+        band.record_trade(to_price(101.0));
+        band.record_trade(to_price(102.0));
+        // Only 2 trades — need 3 for streak.
+        assert!(!band.is_on_a_roll());
+        assert!((band.upper_limit() - 105.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn on_a_roll_after_streak_of_up_ticks() {
+        let mut band = PriceBand::new(100.0, 5.0);
+        band.record_trade(to_price(101.0));
+        band.record_trade(to_price(102.0));
+        band.record_trade(to_price(103.0));
+        assert!(band.is_on_a_roll());
+        // Upside cap expands to 20 %.
+        assert!((band.upper_limit() - 120.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn streak_broken_by_flat_or_down_tick() {
+        let mut band = PriceBand::new(100.0, 5.0);
+        band.record_trade(to_price(101.0));
+        band.record_trade(to_price(102.0));
+        band.record_trade(to_price(101.5)); // down-tick breaks streak
+        assert!(!band.is_on_a_roll());
+        assert!((band.upper_limit() - 105.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn engine_accepts_order_up_to_20pct_when_on_a_roll() {
+        let mut e = MatchingEngine::new();
+        // Use streak_threshold = 3 via PriceBand::with_config for clarity.
+        let band = PriceBand::with_config(100.0, 5.0, 5.0, 20.0, 3);
+        e.set_price_band_custom(band);
+
+        // Build up a 3-trade up-tick streak by placing matching limit pairs.
+        let prices = [101.0_f64, 102.0, 103.0];
+        for p in prices {
+            e.submit_order(OrderSide::Sell, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+            e.submit_order(OrderSide::Buy, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+        }
+
+        assert!(e.price_band().unwrap().is_on_a_roll());
+
+        // An order at 118.0 (within 20 % band) must now be accepted.
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(118.0), 1.0)
+            .is_ok());
+
+        // An order above 120.0 must still be rejected.
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(121.0), 1.0)
+            .is_err());
+    }
+
+    #[test]
+    fn engine_still_rejects_above_20pct_even_on_a_roll() {
+        let mut e = MatchingEngine::new();
+        let band = PriceBand::with_config(100.0, 5.0, 5.0, 20.0, 3);
+        e.set_price_band_custom(band);
+
+        // Seed the streak manually via PriceBand::record_trade through the engine.
+        // We do this by executing 3 ascending trades.
+        for p in [101.0_f64, 102.0, 103.0] {
+            e.submit_order(OrderSide::Sell, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+            e.submit_order(OrderSide::Buy, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+        }
+
+        assert!(e.price_band().unwrap().is_on_a_roll());
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(120.01), 1.0)
+            .is_err());
+    }
+
+    // ── Daily reference reset ──────────────────────────────────────────────
+
+    #[test]
+    fn reset_daily_reference_clears_streak_and_moves_band() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+
+        // Seed a streak.
+        for p in [101.0_f64, 102.0, 103.0] {
+            e.submit_order(OrderSide::Sell, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+            e.submit_order(OrderSide::Buy, OrderType::Limit, Some(p), 1.0)
+                .unwrap();
+        }
+        assert!(e.price_band().unwrap().is_on_a_roll());
+
+        // New day — reset to 110.0 reference.
+        e.reset_daily_reference(110.0);
+
+        let band = e.price_band().unwrap();
+        assert!(!band.is_on_a_roll()); // streak cleared
+        assert!((band.lower_limit() - 104.5).abs() < 1e-2);
+        assert!((band.upper_limit() - 115.5).abs() < 1e-2);
+    }
+
+    #[test]
+    fn clear_price_band_removes_restriction() {
+        let mut e = MatchingEngine::new();
+        e.set_price_band(100.0, 5.0);
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(200.0), 1.0)
+            .is_err());
+        e.clear_price_band();
+        assert!(e
+            .submit_order(OrderSide::Buy, OrderType::Limit, Some(200.0), 1.0)
+            .is_ok());
+    }
+
+    #[test]
+    fn marketplace_error_display() {
+        let err = MarketplaceError::PriceBandViolation {
+            price: 110.0,
+            lower_limit: 95.0,
+            upper_limit: 105.0,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("110.0"));
+        assert!(msg.contains("95.0"));
+        assert!(msg.contains("105.0"));
     }
 }
