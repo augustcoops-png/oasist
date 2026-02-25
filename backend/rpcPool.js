@@ -29,6 +29,8 @@ const PUBLIC_ENDPOINTS = {
     "https://1rpc.io/sol",
     // RPCPool — free public
     "https://mainnet.rpcpool.com",
+    // RPCPool — free tier (alternate)
+    "https://free.rpcpool.com",
     // BlockPI — public endpoint
     "https://solana.blockpi.network/v1/rpc/public",
     // RPCFast — free public
@@ -43,6 +45,28 @@ const PUBLIC_ENDPOINTS = {
     "https://lb.drpc.org/ogrpc?network=solana",
     // Melea Trust — free public
     "https://api.mainnet.solana.melea.xyz",
+    // Hello Moon — public endpoint
+    "https://rpc.hellomoon.io/public",
+    // OnFinality — shared public node
+    "https://solana.api.onfinality.io/public",
+    // Solana Tracker — free public
+    "https://rpc.solanatracker.io/public",
+    // Metaplex — community node
+    "https://api.metaplex.com",
+    // Flux Infrastructure — public Solana RPC
+    "https://mainnet.rpc.fluxinfra.xyz",
+    // Chainstack — demo public endpoint
+    "https://solana-mainnet.core.chainstack.com/demo",
+    // solana-rpc.com — free public
+    "https://mainnet.solana-rpc.com",
+    // chain.love — community node
+    "https://node1.solana.chain.love",
+    // Triton One — public access node
+    "https://api.mainnet-beta.solana.com.tri.ton.one",
+    // Syndica — free public tier
+    "https://solana-mainnet.rpc.syndica.io",
+    // Helius — public (no-key) endpoint
+    "https://mainnet.helius-rpc.com/public",
   ],
 
   /** Devnet — for development and testing. */
@@ -51,12 +75,18 @@ const PUBLIC_ENDPOINTS = {
     "https://api.devnet.solana.com",
     // Ankr devnet
     "https://rpc.ankr.com/solana_devnet",
+    // Omnia Tech — devnet public endpoint
+    "https://endpoints.omniatech.io/v1/sol/devnet/public",
+    // RPCPool devnet
+    "https://devnet.rpcpool.com",
   ],
 
   /** Testnet — for pre-production testing. */
   testnet: [
     // Solana Labs — official testnet
     "https://api.testnet.solana.com",
+    // Ankr testnet
+    "https://rpc.ankr.com/solana_testnet",
   ],
 };
 
