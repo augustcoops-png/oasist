@@ -1,0 +1,10 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background square with rounded corners -->
+  <rect width="200" height="200" rx="32" fill="#0A3330"/>
+  <!-- Outer ring representing the "O" in Oasist -->
+  <circle cx="100" cy="100" r="64" stroke="#00C4B3" stroke-width="14" fill="none"/>
+  <!-- Three dots inside the ring representing oasis life/resources -->
+  <circle cx="100" cy="80" r="9" fill="#00C4B3"/>
+  <circle cx="83" cy="113" r="9" fill="#00C4B3"/>
+  <circle cx="117" cy="113" r="9" fill="#00C4B3"/>
+</svg>

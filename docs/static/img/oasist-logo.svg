@@ -1,0 +1,12 @@
+<svg width="419" height="79" viewBox="0 0 419 79" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Emblem (oasist-emblem scaled to 79x79) -->
+  <rect x="0" y="0" width="79" height="79" rx="13" fill="#0A3330"/>
+  <!-- Ring -->
+  <circle cx="39.5" cy="39.5" r="25.3" stroke="#00C4B3" stroke-width="5.5" fill="none"/>
+  <!-- Three dots -->
+  <circle cx="39.5" cy="31.6" r="3.6" fill="#00C4B3"/>
+  <circle cx="32.8" cy="44.7" r="3.6" fill="#00C4B3"/>
+  <circle cx="46.2" cy="44.7" r="3.6" fill="#00C4B3"/>
+  <!-- OASIST wordmark -->
+  <text x="99" y="57" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#0A3330" letter-spacing="3">OASIST</text>
+</svg>
