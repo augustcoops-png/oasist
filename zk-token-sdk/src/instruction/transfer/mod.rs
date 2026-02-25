@@ -105,6 +105,7 @@ pub fn try_combine_lo_hi_u64(
 }
 
 #[cfg(not(target_os = "solana"))]
+#[allow(dead_code)]
 fn try_combine_lo_hi_ciphertexts(
     ciphertext_lo: &ElGamalCiphertext,
     ciphertext_hi: &ElGamalCiphertext,
