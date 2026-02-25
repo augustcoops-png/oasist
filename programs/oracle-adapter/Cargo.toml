@@ -15,6 +15,7 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 solana-program-runtime = { workspace = true }
 solana-sdk = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 solana-logger = { workspace = true }

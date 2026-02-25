@@ -1,4 +1,5 @@
 #![allow(clippy::arithmetic_side_effects)]
+pub mod oracle_error;
 pub mod oracle_instruction;
 pub mod oracle_processor;
 
@@ -33,6 +34,17 @@ pub struct PriceFeed {
 impl PriceFeed {
     pub fn max_space() -> u64 {
         bincode::serialized_size(&PriceFeed::default()).unwrap()
+    }
+
+    /// Returns the current `(price, confidence)` pair only when the feed is
+    /// valid (`is_valid == true`).  Returns `None` when the feed has been
+    /// invalidated or has never received a price update.
+    pub fn get_price(&self) -> Option<(i64, u64)> {
+        if self.is_valid {
+            Some((self.price, self.confidence))
+        } else {
+            None
+        }
     }
 
     /// Returns `true` if the price is older than `max_age_secs` seconds relative

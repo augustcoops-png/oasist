@@ -1,7 +1,7 @@
 //! Oracle Adapter program processor
 
 use {
-    crate::{oracle_instruction::OracleInstruction, PriceFeed},
+    crate::{oracle_error::OracleError, oracle_instruction::OracleInstruction, PriceFeed},
     bincode::{deserialize, serialize},
     solana_program_runtime::{declare_process_instruction, ic_msg},
     solana_sdk::{instruction::InstructionError, program_utils::limited_deserialize},
@@ -28,7 +28,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "InitializePriceFeed: price feed account must be owned by the oracle adapter program"
                 );
-                return Err(InstructionError::InvalidAccountOwner);
+                return Err(OracleError::NotFeedOwner.into());
             }
             if !price_feed_account.is_signer() {
                 ic_msg!(
@@ -55,13 +55,13 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     "InitializePriceFeed: failed to serialize price feed: {}",
                     err
                 );
-                InstructionError::InvalidAccountData
+                InstructionError::from(OracleError::InvalidFeedData)
             })?;
 
             let mut price_feed_account =
                 instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
             if price_feed_account.get_data().len() < serialized.len() {
-                return Err(InstructionError::AccountDataTooSmall);
+                return Err(OracleError::AccountDataTooSmall.into());
             }
             price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
             Ok(())
@@ -94,7 +94,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "UpdatePrice: price feed account must be owned by the oracle adapter program"
                 );
-                return Err(InstructionError::InvalidAccountOwner);
+                return Err(OracleError::NotFeedOwner.into());
             }
 
             let mut feed: PriceFeed =
@@ -104,7 +104,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                         "UpdatePrice: failed to deserialize price feed: {}",
                         err
                     );
-                    InstructionError::InvalidAccountData
+                    InstructionError::from(OracleError::InvalidFeedData)
                 })?;
             drop(price_feed_account);
 
@@ -113,7 +113,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "UpdatePrice: signer is not the feed authority"
                 );
-                return Err(InstructionError::MissingRequiredSignature);
+                return Err(OracleError::NotFeedAuthority.into());
             }
 
             feed.price = price;
@@ -127,13 +127,13 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     "UpdatePrice: failed to serialize price feed: {}",
                     err
                 );
-                InstructionError::InvalidAccountData
+                InstructionError::from(OracleError::InvalidFeedData)
             })?;
 
             let mut price_feed_account =
                 instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
             if price_feed_account.get_data().len() < serialized.len() {
-                return Err(InstructionError::AccountDataTooSmall);
+                return Err(OracleError::AccountDataTooSmall.into());
             }
             price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
             Ok(())
@@ -166,7 +166,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "SetAuthority: price feed account must be owned by the oracle adapter program"
                 );
-                return Err(InstructionError::InvalidAccountOwner);
+                return Err(OracleError::NotFeedOwner.into());
             }
             let mut feed: PriceFeed =
                 deserialize(price_feed_account.get_data()).map_err(|err| {
@@ -175,7 +175,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                         "SetAuthority: failed to deserialize price feed: {}",
                         err
                     );
-                    InstructionError::InvalidAccountData
+                    InstructionError::from(OracleError::InvalidFeedData)
                 })?;
             drop(price_feed_account);
 
@@ -184,7 +184,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "SetAuthority: signer is not the feed authority"
                 );
-                return Err(InstructionError::MissingRequiredSignature);
+                return Err(OracleError::NotFeedAuthority.into());
             }
 
             feed.authority = new_authority_key;
@@ -195,13 +195,13 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     "SetAuthority: failed to serialize price feed: {}",
                     err
                 );
-                InstructionError::InvalidAccountData
+                InstructionError::from(OracleError::InvalidFeedData)
             })?;
 
             let mut price_feed_account =
                 instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
             if price_feed_account.get_data().len() < serialized.len() {
-                return Err(InstructionError::AccountDataTooSmall);
+                return Err(OracleError::AccountDataTooSmall.into());
             }
             price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
             Ok(())
@@ -229,7 +229,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "InvalidateFeed: price feed account must be owned by the oracle adapter program"
                 );
-                return Err(InstructionError::InvalidAccountOwner);
+                return Err(OracleError::NotFeedOwner.into());
             }
             let mut feed: PriceFeed =
                 deserialize(price_feed_account.get_data()).map_err(|err| {
@@ -238,7 +238,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                         "InvalidateFeed: failed to deserialize price feed: {}",
                         err
                     );
-                    InstructionError::InvalidAccountData
+                    InstructionError::from(OracleError::InvalidFeedData)
                 })?;
             drop(price_feed_account);
 
@@ -247,7 +247,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "InvalidateFeed: signer is not the feed authority"
                 );
-                return Err(InstructionError::MissingRequiredSignature);
+                return Err(OracleError::NotFeedAuthority.into());
             }
 
             feed.is_valid = false;
@@ -258,13 +258,13 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     "InvalidateFeed: failed to serialize price feed: {}",
                     err
                 );
-                InstructionError::InvalidAccountData
+                InstructionError::from(OracleError::InvalidFeedData)
             })?;
 
             let mut price_feed_account =
                 instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
             if price_feed_account.get_data().len() < serialized.len() {
-                return Err(InstructionError::AccountDataTooSmall);
+                return Err(OracleError::AccountDataTooSmall.into());
             }
             price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
             Ok(())
@@ -293,7 +293,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                     invoke_context,
                     "CloseFeed: price feed account must be owned by the oracle adapter program"
                 );
-                return Err(InstructionError::InvalidAccountOwner);
+                return Err(OracleError::NotFeedOwner.into());
             }
             let feed: PriceFeed =
                 deserialize(price_feed_account.get_data()).map_err(|err| {
@@ -302,14 +302,14 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                         "CloseFeed: failed to deserialize price feed: {}",
                         err
                     );
-                    InstructionError::InvalidAccountData
+                    InstructionError::from(OracleError::InvalidFeedData)
                 })?;
             if feed.authority != authority_key {
                 ic_msg!(
                     invoke_context,
                     "CloseFeed: signer is not the feed authority"
                 );
-                return Err(InstructionError::MissingRequiredSignature);
+                return Err(OracleError::NotFeedAuthority.into());
             }
             let lamports = price_feed_account.get_lamports();
             drop(price_feed_account);
@@ -800,6 +800,49 @@ mod tests {
             ..PriceFeed::default()
         };
         assert!(feed.is_stale(1_000, 9999));
+    }
+
+    // ---- PriceFeed::get_price() -------------------------------------------------
+
+    #[test]
+    fn test_get_price_valid() {
+        let feed = PriceFeed {
+            is_valid: true,
+            price: 4_200_000_000,
+            confidence: 50_000,
+            ..PriceFeed::default()
+        };
+        assert_eq!(feed.get_price(), Some((4_200_000_000, 50_000)));
+    }
+
+    #[test]
+    fn test_get_price_invalid() {
+        // An invalid feed returns None
+        let feed = PriceFeed {
+            is_valid: false,
+            price: 4_200_000_000,
+            confidence: 50_000,
+            ..PriceFeed::default()
+        };
+        assert_eq!(feed.get_price(), None);
+    }
+
+    #[test]
+    fn test_get_price_after_update() {
+        // Verify get_price() returns Some only after a successful UpdatePrice
+        let feed_pubkey = Pubkey::new_unique();
+        let authority_pubkey = Pubkey::new_unique();
+
+        let initialized = init_feed(feed_pubkey, authority_pubkey, -8);
+        // Feed was just initialized: is_valid == false
+        let feed = get_price_feed_data(initialized.data()).unwrap();
+        assert_eq!(feed.get_price(), None);
+
+        // After an UpdatePrice the feed becomes valid
+        let updated =
+            init_and_update_feed(feed_pubkey, authority_pubkey, 9_999, 1_000, 1_700_000_000);
+        let feed = get_price_feed_data(updated.data()).unwrap();
+        assert_eq!(feed.get_price(), Some((9_999, 1_000)));
     }
 }
 

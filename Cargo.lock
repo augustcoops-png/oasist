@@ -6479,6 +6479,7 @@ dependencies = [
  "solana-logger",
  "solana-program-runtime",
  "solana-sdk",
+ "thiserror",
 ]
 
 [[package]]
