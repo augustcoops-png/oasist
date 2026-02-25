@@ -14,12 +14,12 @@ This directory contains a newly generated Solana genesis configuration for a dev
 
 ## Genesis Configuration
 
-- **Genesis Hash**: CVMZyYyUiTBnd87hwmvs1NEPjpghNhwjUbH5wgsPDL9d
+- **Genesis Hash**: 5DsVLu1wn9VFC3KVbfbNTPjc96qkDBP1pKhTkrNxNcXT
 - **Cluster Type**: Development
-- **Creation Time**: 2026-01-28T22:20:23+00:00
-- **Shred Version**: 52103
+- **Creation Time**: 2026-02-25T01:51:05+00:00
+- **Shred Version**: 40590
 - **Ticks per Slot**: 64
-- **Hashes per Tick**: 481
+- **Hashes per Tick**: 501
 - **Target Tick Duration**: 6.25ms
 - **Slots per Epoch**: 8192
 - **Warmup Epochs**: Disabled
