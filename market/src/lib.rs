@@ -24,3 +24,4 @@
 //! ```
 
 pub mod binance;
+pub mod marketplace;
