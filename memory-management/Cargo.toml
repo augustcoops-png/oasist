@@ -1,6 +1,7 @@
 [package]
 name = "solana-memory-management"
 description = "Solana memory management"
+documentation = "https://docs.rs/solana-memory-management"
 version = { workspace = true }
 authors = { workspace = true }
 repository = { workspace = true }

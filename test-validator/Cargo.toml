@@ -1,6 +1,7 @@
 [package]
 name = "solana-test-validator"
 description = "Blockchain, Rebuilt for Scale"
+documentation = "https://docs.rs/solana-test-validator"
 readme = "../README.md"
 version = { workspace = true }
 authors = { workspace = true }
