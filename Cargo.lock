@@ -3474,6 +3474,7 @@ version = "2.0.0"
 dependencies = [
  "dirs-next",
  "hyper",
+ "rand 0.8.5",
  "serde_json",
  "solana-sdk",
  "tiny-bip39",
@@ -6180,12 +6181,14 @@ dependencies = [
  "bs58",
  "clap 3.2.23",
  "dirs-next",
+ "flate2",
  "num_cpus",
  "solana-clap-v3-utils",
  "solana-cli-config",
  "solana-remote-wallet",
  "solana-sdk",
  "solana-version",
+ "tar",
  "tempfile",
  "tiny-bip39",
 ]

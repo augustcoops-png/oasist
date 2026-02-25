@@ -4,9 +4,13 @@
 //! network interface.  All cross-origin and external webhook requests are
 //! rejected with 403 Forbidden.
 //!
+//! All API requests require a Bearer token that is generated on first startup
+//! and stored in `~/.config/solana/oasist-api.key`.  The UI page is served
+//! with the token already embedded so the browser works without manual setup.
+//!
 //! Endpoints:
-//!   GET  /                          — HTML wallet-generation UI
-//!   POST /api/generate-wallet       — JSON wallet generation (localhost only)
+//!   GET  /                          — HTML wallet-generation UI (token embedded)
+//!   POST /api/generate-wallet       — JSON wallet generation (localhost + token)
 //!        ?words=12|15|18|21|24      — (optional) mnemonic word count, default 12
 //!
 //! Default listen address: 127.0.0.1:9899
@@ -19,6 +23,7 @@ use {
         service::{make_service_fn, service_fn},
         Body, Method, Request, Response, Server, StatusCode,
     },
+    rand::Rng,
     solana_sdk::signature::{keypair_from_seed, Signer},
     std::{
         convert::Infallible,
@@ -26,6 +31,7 @@ use {
         fs::OpenOptions,
         io::Write,
         net::SocketAddr,
+        sync::Arc,
     },
 };
 
@@ -142,7 +148,10 @@ const UI_HTML: &str = r#"<!DOCTYPE html>
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Generating…';
     try {
-      const res = await fetch('/api/generate-wallet?words=' + words, { method: 'POST' });
+      const res = await fetch('/api/generate-wallet?words=' + words, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer {{API_TOKEN}}' }
+      });
       if (!res.ok) throw new Error('Server error: ' + res.status);
       const data = await res.json();
       document.getElementById('addrText').textContent = data.address;
@@ -170,6 +179,43 @@ const UI_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>
 "#;
+
+// ── API key management ───────────────────────────────────────────────────────
+
+fn api_key_path() -> std::path::PathBuf {
+    let mut p = dirs_next::home_dir().expect("home directory");
+    p.extend([".config", "solana", "oasist-api.key"]);
+    p
+}
+
+/// Load the existing API key, or generate and persist a new one.
+fn load_or_create_api_key() -> String {
+    let path = api_key_path();
+    if let Ok(key) = std::fs::read_to_string(&path) {
+        let key = key.trim().to_string();
+        if !key.is_empty() {
+            return key;
+        }
+    }
+    // Generate a 32-byte random token, hex-encoded (64 chars)
+    let bytes: [u8; 32] = rand::thread_rng().gen();
+    let key = hex_encode(&bytes);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::write(&path, &key).ok();
+    // Restrict file permissions to owner-read-only on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).ok();
+    }
+    key
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
 
 // ── address file helper ──────────────────────────────────────────────────────
 
@@ -230,45 +276,65 @@ fn generate_wallet(words: usize) -> Result<WalletResult, String> {
 // ── HTTP handler ─────────────────────────────────────────────────────────────
 
 /// Returns true when the Host header points to localhost / 127.0.0.1.
-/// Requests from any other origin (external webhooks, remote callers) are
-/// rejected before any processing takes place.
 fn is_localhost(req: &Request<Body>) -> bool {
     req.headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .map(|host| {
-            // strip optional port suffix
             let host = host.split(':').next().unwrap_or(host);
             host == "localhost" || host == "127.0.0.1"
         })
         .unwrap_or(false)
 }
 
-fn forbidden() -> Response<Body> {
+/// Extract Bearer token from `Authorization: Bearer <token>` header.
+fn bearer_token(req: &Request<Body>) -> Option<&str> {
+    req.headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+}
+
+fn forbidden(msg: &'static str) -> Response<Body> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
         .header(header::CONTENT_TYPE, "text/plain")
-        .body(Body::from("403 Forbidden: external access is not permitted"))
+        .body(Body::from(msg))
         .unwrap()
 }
 
-async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    // Reject every request that does not come from localhost.
-    // This prevents webhooks, remote API calls, and cross-origin browser
-    // requests from triggering wallet generation.
+fn unauthorized() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .header("WWW-Authenticate", "Bearer realm=\"oasist-wallet-api\"")
+        .body(Body::from("401 Unauthorized: valid API key required"))
+        .unwrap()
+}
+
+async fn handle(req: Request<Body>, api_key: Arc<String>) -> Result<Response<Body>, Infallible> {
+    // 1. Reject any request not from localhost (anti-webhook)
     if !is_localhost(&req) {
-        return Ok(forbidden());
+        return Ok(forbidden("403 Forbidden: external access is not permitted"));
     }
 
     match (req.method(), req.uri().path()) {
-        // UI
-        (&Method::GET, "/") | (&Method::GET, "/index.html") => Ok(Response::builder()
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-            .body(Body::from(UI_HTML))
-            .unwrap()),
+        // UI — serve with the token embedded so the browser can call the API
+        (&Method::GET, "/") | (&Method::GET, "/index.html") => {
+            let html = UI_HTML.replace("{{API_TOKEN}}", &*api_key);
+            Ok(Response::builder()
+                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .body(Body::from(html))
+                .unwrap())
+        }
 
-        // Wallet generation API — no CORS headers intentionally
+        // Wallet generation API — requires Bearer token
         (&Method::POST, "/api/generate-wallet") => {
+            // 2. Require the correct API key on every API call
+            if bearer_token(&req) != Some(api_key.as_str()) {
+                return Ok(unauthorized());
+            }
+
             let words: usize = req
                 .uri()
                 .query()
@@ -322,17 +388,25 @@ async fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(9899);
 
+    let api_key = Arc::new(load_or_create_api_key());
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle)) });
+    let make_svc = make_service_fn(move |_conn| {
+        let api_key = Arc::clone(&api_key);
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                handle(req, Arc::clone(&api_key))
+            }))
+        }
+    });
 
     let server = Server::bind(&addr).serve(make_svc);
 
     println!("OASIST Wallet API listening on http://127.0.0.1:{port} (localhost only)");
     println!("  UI:  http://localhost:{port}/");
     println!("  API: POST http://localhost:{port}/api/generate-wallet?words=12");
-    println!("  External access is disabled — webhook requests will be rejected.");
+    println!("  API key stored at: {}", api_key_path().display());
+    println!("  External access and webhook requests are disabled.");
 
     if let Err(e) = server.await {
         eprintln!("server error: {e}");
@@ -412,5 +486,36 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         assert!(!is_localhost(&req));
+    }
+
+    // ── API key / auth ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_hex_encode() {
+        assert_eq!(hex_encode(&[0x0a, 0xff]), "0aff");
+    }
+
+    #[test]
+    fn test_bearer_token_present() {
+        let req = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer abc123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(bearer_token(&req), Some("abc123"));
+    }
+
+    #[test]
+    fn test_bearer_token_missing() {
+        let req = Request::builder().body(Body::empty()).unwrap();
+        assert_eq!(bearer_token(&req), None);
+    }
+
+    #[test]
+    fn test_bearer_token_wrong_scheme() {
+        let req = Request::builder()
+            .header(header::AUTHORIZATION, "Basic abc123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(bearer_token(&req), None);
     }
 }

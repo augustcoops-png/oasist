@@ -11,6 +11,7 @@ edition = { workspace = true }
 [dependencies]
 dirs-next = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
+rand = { workspace = true }
 serde_json = { workspace = true }
 solana-sdk = { workspace = true }
 tiny-bip39 = { workspace = true }
