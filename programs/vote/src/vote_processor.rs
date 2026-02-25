@@ -953,6 +953,138 @@ mod tests {
     }
 
     #[test]
+    fn test_withdraw_validation_fee_split_to_signers() {
+        // Set up a vote account that uses the rent-exempt reserve plus an extra
+        // amount we will withdraw, so the account stays rent-exempt after the withdrawal.
+        let rent = Rent::default();
+        let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
+        let withdraw_lamports: u64 = 1_000;
+        let initial_balance = rent_exempt + withdraw_lamports;
+
+        let node_pubkey = solana_sdk::pubkey::new_rand();
+        let authorized_voter = solana_sdk::pubkey::new_rand();
+        let authorized_withdrawer = solana_sdk::pubkey::new_rand();
+        let signer1 = solana_sdk::pubkey::new_rand();
+        let signer2 = solana_sdk::pubkey::new_rand();
+
+        let vote_pubkey = solana_sdk::pubkey::new_rand();
+        let base_account = vote_state::create_account_with_authorized(
+            &node_pubkey,
+            &authorized_voter,
+            &authorized_withdrawer,
+            0,
+            initial_balance,
+        );
+
+        let add_signer_instruction_accounts = vec![
+            AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+            AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+        ];
+
+        // Add signer1
+        let accounts_after = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(signer1)).unwrap(),
+            vec![(vote_pubkey, base_account), (authorized_withdrawer, AccountSharedData::default())],
+            add_signer_instruction_accounts.clone(),
+            Ok(()),
+        );
+        // Add signer2
+        let accounts_after2 = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(signer2)).unwrap(),
+            vec![(vote_pubkey, accounts_after[0].clone()), (authorized_withdrawer, AccountSharedData::default())],
+            add_signer_instruction_accounts.clone(),
+            Ok(()),
+        );
+
+        let vote_account_with_signers = accounts_after2[0].clone();
+        assert_eq!(vote_account_with_signers.lamports(), initial_balance);
+
+        // Now perform a partial withdrawal.
+        // Expected fee = floor(1000 * 200 / 10000) = 20 lamports total
+        //   signer1 gets 10 + 0 remainder = 10 lamports
+        //   signer2 gets 10 lamports
+        //   recipient gets 1000 - 20 = 980 lamports
+        let recipient = solana_sdk::pubkey::new_rand();
+        let expected_fee_total = withdraw_lamports * 200 / 10_000; // = 20
+        let expected_recipient = withdraw_lamports - expected_fee_total;  // = 980
+        let expected_per_signer = expected_fee_total / 2;                  // = 10
+
+        let final_accounts = process_instruction(
+            &serialize(&VoteInstruction::Withdraw(withdraw_lamports)).unwrap(),
+            vec![
+                (vote_pubkey, vote_account_with_signers),
+                (recipient, AccountSharedData::default()),
+                (signer1, AccountSharedData::default()),
+                (signer2, AccountSharedData::default()),
+                (sysvar::rent::id(), account::create_account_shared_data_for_test(&rent)),
+                (sysvar::clock::id(), create_default_clock_account()),
+                (authorized_withdrawer, AccountSharedData::default()),
+            ],
+            vec![
+                AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: signer1, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: signer2, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        // vote account: lost withdraw_lamports
+        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports);
+        // recipient: got net amount (withdraw minus total fee)
+        assert_eq!(final_accounts[1].lamports(), expected_recipient);
+        // signer1: got half the fee
+        assert_eq!(final_accounts[2].lamports(), expected_per_signer);
+        // signer2: got half the fee
+        assert_eq!(final_accounts[3].lamports(), expected_per_signer);
+    }
+
+    #[test]
+    fn test_withdraw_no_fee_without_rotation_signers() {
+        // Ensure the 2% fee is NOT applied when no rotation signers are configured.
+        let rent = Rent::default();
+        let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
+        let withdraw_lamports = 1_000u64;
+        let initial_balance = rent_exempt + withdraw_lamports;
+
+        let node_pubkey = solana_sdk::pubkey::new_rand();
+        let authorized_voter = solana_sdk::pubkey::new_rand();
+        let authorized_withdrawer = solana_sdk::pubkey::new_rand();
+        let vote_pubkey = solana_sdk::pubkey::new_rand();
+        let vote_account = vote_state::create_account_with_authorized(
+            &node_pubkey,
+            &authorized_voter,
+            &authorized_withdrawer,
+            0,
+            initial_balance,
+        );
+
+        let recipient = solana_sdk::pubkey::new_rand();
+
+        let final_accounts = process_instruction(
+            &serialize(&VoteInstruction::Withdraw(withdraw_lamports)).unwrap(),
+            vec![
+                (vote_pubkey, vote_account),
+                (recipient, AccountSharedData::default()),
+                (sysvar::rent::id(), account::create_account_shared_data_for_test(&rent)),
+                (sysvar::clock::id(), create_default_clock_account()),
+                (authorized_withdrawer, AccountSharedData::default()),
+            ],
+            vec![
+                AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        // Without rotation signers: recipient gets the full requested amount
+        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports);
+        assert_eq!(final_accounts[1].lamports(), withdraw_lamports);
+    }
+
+    #[test]
     fn test_vote_signature() {
         let (vote_pubkey, vote_account) = create_test_account();
         let (vote, instruction_datas) = create_serialized_votes();
