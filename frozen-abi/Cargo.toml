@@ -34,3 +34,6 @@ solana-logger = { workspace = true }
 
 [build-dependencies]
 rustc_version = { workspace = true }
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

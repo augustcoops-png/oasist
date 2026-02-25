@@ -1,6 +1,7 @@
 [package]
 name = "solana-loader-v4-program"
 description = "Solana Loader v4"
+documentation = "https://docs.rs/solana-loader-v4-program"
 version = { workspace = true }
 authors = { workspace = true }
 repository = { workspace = true }
