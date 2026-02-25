@@ -33,6 +33,30 @@ pub enum OracleInstruction {
         /// Unix timestamp of this price observation.
         timestamp: i64,
     },
+
+    /// Transfer the feed authority to a new public key.
+    ///
+    /// Accounts expected:
+    ///   0. `[writable]` Price feed account.
+    ///   1. `[signer]`   Current authority.
+    ///   2. `[]`         New authority.
+    SetAuthority,
+
+    /// Mark a price feed as invalid without changing the price data.
+    /// Useful for pausing a feed during maintenance or in emergency situations.
+    ///
+    /// Accounts expected:
+    ///   0. `[writable]` Price feed account.
+    ///   1. `[signer]`   Authority that was set during initialization.
+    InvalidateFeed,
+
+    /// Close a price feed account and transfer its lamports to a recipient.
+    ///
+    /// Accounts expected:
+    ///   0. `[writable]` Price feed account to close.
+    ///   1. `[signer]`   Authority that was set during initialization.
+    ///   2. `[writable]` Recipient account that will receive the reclaimed lamports.
+    CloseFeed,
 }
 
 /// Build the instructions required to create and initialize a new price feed
@@ -93,6 +117,58 @@ pub fn update_price(
             confidence,
             timestamp,
         },
+        account_metas,
+    )
+}
+
+/// Build the `SetAuthority` instruction.
+pub fn set_authority(
+    price_feed_pubkey: &Pubkey,
+    current_authority_pubkey: &Pubkey,
+    new_authority_pubkey: &Pubkey,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*price_feed_pubkey, false),
+        AccountMeta::new_readonly(*current_authority_pubkey, true),
+        AccountMeta::new_readonly(*new_authority_pubkey, false),
+    ];
+    Instruction::new_with_bincode(
+        crate::id(),
+        &OracleInstruction::SetAuthority,
+        account_metas,
+    )
+}
+
+/// Build the `InvalidateFeed` instruction.
+pub fn invalidate_feed(
+    price_feed_pubkey: &Pubkey,
+    authority_pubkey: &Pubkey,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*price_feed_pubkey, false),
+        AccountMeta::new_readonly(*authority_pubkey, true),
+    ];
+    Instruction::new_with_bincode(
+        crate::id(),
+        &OracleInstruction::InvalidateFeed,
+        account_metas,
+    )
+}
+
+/// Build the `CloseFeed` instruction.
+pub fn close_feed(
+    price_feed_pubkey: &Pubkey,
+    authority_pubkey: &Pubkey,
+    recipient_pubkey: &Pubkey,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*price_feed_pubkey, false),
+        AccountMeta::new_readonly(*authority_pubkey, true),
+        AccountMeta::new(*recipient_pubkey, false),
+    ];
+    Instruction::new_with_bincode(
+        crate::id(),
+        &OracleInstruction::CloseFeed,
         account_metas,
     )
 }

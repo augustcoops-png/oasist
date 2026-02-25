@@ -34,6 +34,12 @@ impl PriceFeed {
     pub fn max_space() -> u64 {
         bincode::serialized_size(&PriceFeed::default()).unwrap()
     }
+
+    /// Returns `true` if the price is older than `max_age_secs` seconds relative
+    /// to `current_timestamp`, or if the feed is not currently valid.
+    pub fn is_stale(&self, current_timestamp: i64, max_age_secs: i64) -> bool {
+        !self.is_valid || (current_timestamp - self.timestamp) > max_age_secs
+    }
 }
 
 /// Utility function to create a pre-populated `PriceFeed` account for use in

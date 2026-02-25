@@ -138,6 +138,192 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
             price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
             Ok(())
         }
+
+        OracleInstruction::SetAuthority => {
+            // Account 0: price feed account (writable)
+            // Account 1: current authority (signer)
+            // Account 2: new authority (read-only)
+            let authority_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 1)?;
+            if !authority_account.is_signer() {
+                ic_msg!(
+                    invoke_context,
+                    "SetAuthority: current authority must be a signer"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            let current_authority_key = *authority_account.get_key();
+            drop(authority_account);
+
+            let new_authority_key = *transaction_context.get_key_of_account_at_index(
+                instruction_context.get_index_of_instruction_account_in_transaction(2)?,
+            )?;
+
+            let price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            if price_feed_account.get_owner() != &crate::id() {
+                ic_msg!(
+                    invoke_context,
+                    "SetAuthority: price feed account must be owned by the oracle adapter program"
+                );
+                return Err(InstructionError::InvalidAccountOwner);
+            }
+            let mut feed: PriceFeed =
+                deserialize(price_feed_account.get_data()).map_err(|err| {
+                    ic_msg!(
+                        invoke_context,
+                        "SetAuthority: failed to deserialize price feed: {}",
+                        err
+                    );
+                    InstructionError::InvalidAccountData
+                })?;
+            drop(price_feed_account);
+
+            if feed.authority != current_authority_key {
+                ic_msg!(
+                    invoke_context,
+                    "SetAuthority: signer is not the feed authority"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+
+            feed.authority = new_authority_key;
+
+            let serialized = serialize(&feed).map_err(|err| {
+                ic_msg!(
+                    invoke_context,
+                    "SetAuthority: failed to serialize price feed: {}",
+                    err
+                );
+                InstructionError::InvalidAccountData
+            })?;
+
+            let mut price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            if price_feed_account.get_data().len() < serialized.len() {
+                return Err(InstructionError::AccountDataTooSmall);
+            }
+            price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
+            Ok(())
+        }
+
+        OracleInstruction::InvalidateFeed => {
+            // Account 0: price feed account (writable)
+            // Account 1: authority (signer)
+            let authority_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 1)?;
+            if !authority_account.is_signer() {
+                ic_msg!(
+                    invoke_context,
+                    "InvalidateFeed: authority must be a signer"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            let authority_key = *authority_account.get_key();
+            drop(authority_account);
+
+            let price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            if price_feed_account.get_owner() != &crate::id() {
+                ic_msg!(
+                    invoke_context,
+                    "InvalidateFeed: price feed account must be owned by the oracle adapter program"
+                );
+                return Err(InstructionError::InvalidAccountOwner);
+            }
+            let mut feed: PriceFeed =
+                deserialize(price_feed_account.get_data()).map_err(|err| {
+                    ic_msg!(
+                        invoke_context,
+                        "InvalidateFeed: failed to deserialize price feed: {}",
+                        err
+                    );
+                    InstructionError::InvalidAccountData
+                })?;
+            drop(price_feed_account);
+
+            if feed.authority != authority_key {
+                ic_msg!(
+                    invoke_context,
+                    "InvalidateFeed: signer is not the feed authority"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+
+            feed.is_valid = false;
+
+            let serialized = serialize(&feed).map_err(|err| {
+                ic_msg!(
+                    invoke_context,
+                    "InvalidateFeed: failed to serialize price feed: {}",
+                    err
+                );
+                InstructionError::InvalidAccountData
+            })?;
+
+            let mut price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            if price_feed_account.get_data().len() < serialized.len() {
+                return Err(InstructionError::AccountDataTooSmall);
+            }
+            price_feed_account.get_data_mut()?[..serialized.len()].copy_from_slice(&serialized);
+            Ok(())
+        }
+
+        OracleInstruction::CloseFeed => {
+            // Account 0: price feed account (writable)
+            // Account 1: authority (signer)
+            // Account 2: recipient (writable)
+            let authority_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 1)?;
+            if !authority_account.is_signer() {
+                ic_msg!(
+                    invoke_context,
+                    "CloseFeed: authority must be a signer"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            let authority_key = *authority_account.get_key();
+            drop(authority_account);
+
+            let price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            if price_feed_account.get_owner() != &crate::id() {
+                ic_msg!(
+                    invoke_context,
+                    "CloseFeed: price feed account must be owned by the oracle adapter program"
+                );
+                return Err(InstructionError::InvalidAccountOwner);
+            }
+            let feed: PriceFeed =
+                deserialize(price_feed_account.get_data()).map_err(|err| {
+                    ic_msg!(
+                        invoke_context,
+                        "CloseFeed: failed to deserialize price feed: {}",
+                        err
+                    );
+                    InstructionError::InvalidAccountData
+                })?;
+            if feed.authority != authority_key {
+                ic_msg!(
+                    invoke_context,
+                    "CloseFeed: signer is not the feed authority"
+                );
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            let lamports = price_feed_account.get_lamports();
+            drop(price_feed_account);
+
+            let mut price_feed_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            price_feed_account.set_lamports(0)?;
+            drop(price_feed_account);
+
+            let mut recipient_account =
+                instruction_context.try_borrow_instruction_account(transaction_context, 2)?;
+            recipient_account.checked_add_lamports(lamports)?;
+            Ok(())
+        }
     }
 });
 
@@ -146,7 +332,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            get_price_feed_data, id,
+            get_price_feed_data, id, PriceFeed,
             oracle_instruction::{initialize_price_feed, update_price},
         },
         solana_program_runtime::invoke_context::mock_process_instruction,
@@ -329,6 +515,291 @@ mod tests {
             ],
             Err(InstructionError::InvalidAccountOwner),
         );
+    }
+
+    // ---- helpers shared by the new tests ----------------------------------------
+
+    /// Initialize a feed and return the resulting feed account state.
+    fn init_feed(
+        feed_pubkey: Pubkey,
+        authority_pubkey: Pubkey,
+        exponent: i32,
+    ) -> AccountSharedData {
+        let feed_account = make_price_feed_account();
+        let authority_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let ix = initialize_price_feed(&feed_pubkey, &authority_pubkey, exponent);
+        let accounts = process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, feed_account),
+                (authority_pubkey, authority_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: true, is_writable: true },
+                AccountMeta { pubkey: authority_pubkey, is_signer: false, is_writable: false },
+            ],
+            Ok(()),
+        );
+        accounts[0].clone()
+    }
+
+    /// Initialize and then price-update a feed; returns the feed account state.
+    fn init_and_update_feed(
+        feed_pubkey: Pubkey,
+        authority_pubkey: Pubkey,
+        price: i64,
+        confidence: u64,
+        timestamp: i64,
+    ) -> AccountSharedData {
+        let initialized = init_feed(feed_pubkey, authority_pubkey, -8);
+        let authority_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let ix = update_price(&feed_pubkey, &authority_pubkey, price, confidence, timestamp);
+        let accounts = process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, initialized),
+                (authority_pubkey, authority_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authority_pubkey, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+        accounts[0].clone()
+    }
+
+    // ---- SetAuthority -----------------------------------------------------------
+
+    #[test]
+    fn test_set_authority() {
+        use crate::oracle_instruction::set_authority;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let old_authority = Pubkey::new_unique();
+        let new_authority = Pubkey::new_unique();
+
+        let initialized = init_feed(feed_pubkey, old_authority, -8);
+        let old_auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let new_auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+
+        let ix = set_authority(&feed_pubkey, &old_authority, &new_authority);
+        let accounts = process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, initialized),
+                (old_authority, old_auth_account),
+                (new_authority, new_auth_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: old_authority, is_signer: true, is_writable: false },
+                AccountMeta { pubkey: new_authority, is_signer: false, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        let feed = get_price_feed_data(accounts[0].data()).unwrap();
+        assert_eq!(feed.authority, new_authority);
+    }
+
+    #[test]
+    fn test_set_authority_wrong_signer() {
+        use crate::oracle_instruction::set_authority;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let real_authority = Pubkey::new_unique();
+        let wrong_signer = Pubkey::new_unique();
+        let new_authority = Pubkey::new_unique();
+
+        let initialized = init_feed(feed_pubkey, real_authority, -8);
+        let wrong_signer_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let new_auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+
+        let ix = set_authority(&feed_pubkey, &wrong_signer, &new_authority);
+        process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, initialized),
+                (wrong_signer, wrong_signer_account),
+                (new_authority, new_auth_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: wrong_signer, is_signer: true, is_writable: false },
+                AccountMeta { pubkey: new_authority, is_signer: false, is_writable: false },
+            ],
+            Err(InstructionError::MissingRequiredSignature),
+        );
+    }
+
+    // ---- InvalidateFeed ---------------------------------------------------------
+
+    #[test]
+    fn test_invalidate_feed() {
+        use crate::oracle_instruction::invalidate_feed;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+
+        // Start with a valid feed
+        let updated = init_and_update_feed(feed_pubkey, authority, 1_000, 5, 1_000_000);
+        assert!(get_price_feed_data(updated.data()).unwrap().is_valid);
+
+        let auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let ix = invalidate_feed(&feed_pubkey, &authority);
+        let accounts = process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, updated),
+                (authority, auth_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authority, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        let feed = get_price_feed_data(accounts[0].data()).unwrap();
+        assert!(!feed.is_valid);
+        // Price data is preserved
+        assert_eq!(feed.price, 1_000);
+    }
+
+    #[test]
+    fn test_invalidate_feed_wrong_authority() {
+        use crate::oracle_instruction::invalidate_feed;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+        let wrong_authority = Pubkey::new_unique();
+
+        let updated = init_and_update_feed(feed_pubkey, authority, 1_000, 5, 1_000_000);
+        let wrong_auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+
+        let ix = invalidate_feed(&feed_pubkey, &wrong_authority);
+        process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, updated),
+                (wrong_authority, wrong_auth_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: wrong_authority, is_signer: true, is_writable: false },
+            ],
+            Err(InstructionError::MissingRequiredSignature),
+        );
+    }
+
+    // ---- CloseFeed --------------------------------------------------------------
+
+    #[test]
+    fn test_close_feed() {
+        use crate::oracle_instruction::close_feed;
+        use solana_sdk::account::ReadableAccount;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+
+        // Give the feed some lamports so we can verify they move
+        let feed_account = AccountSharedData::new(500_000, PriceFeed::max_space() as usize, &id());
+        let authority_account_raw = AccountSharedData::new(0, 0, &Pubkey::default());
+        let init_ix = initialize_price_feed(&feed_pubkey, &authority, -8);
+        let accounts = process_instruction(
+            &init_ix.data,
+            vec![
+                (feed_pubkey, feed_account),
+                (authority, authority_account_raw.clone()),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: true, is_writable: true },
+                AccountMeta { pubkey: authority, is_signer: false, is_writable: false },
+            ],
+            Ok(()),
+        );
+        let initialized_feed = accounts[0].clone();
+
+        let recipient_account = AccountSharedData::new(100, 0, &Pubkey::default());
+        let auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let ix = close_feed(&feed_pubkey, &authority, &recipient);
+        let accounts = process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, initialized_feed),
+                (authority, auth_account),
+                (recipient, recipient_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authority, is_signer: true, is_writable: false },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+            ],
+            Ok(()),
+        );
+
+        // Feed account lamports must be zero
+        assert_eq!(accounts[0].lamports(), 0);
+        // Recipient received the 500_000 lamports
+        assert_eq!(accounts[2].lamports(), 100 + 500_000);
+    }
+
+    #[test]
+    fn test_close_feed_wrong_authority() {
+        use crate::oracle_instruction::close_feed;
+
+        let feed_pubkey = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+        let wrong_authority = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+
+        let initialized = init_feed(feed_pubkey, authority, -8);
+        let wrong_auth_account = AccountSharedData::new(0, 0, &Pubkey::default());
+        let recipient_account = AccountSharedData::new(0, 0, &Pubkey::default());
+
+        let ix = close_feed(&feed_pubkey, &wrong_authority, &recipient);
+        process_instruction(
+            &ix.data,
+            vec![
+                (feed_pubkey, initialized),
+                (wrong_authority, wrong_auth_account),
+                (recipient, recipient_account),
+            ],
+            vec![
+                AccountMeta { pubkey: feed_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: wrong_authority, is_signer: true, is_writable: false },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+            ],
+            Err(InstructionError::MissingRequiredSignature),
+        );
+    }
+
+    // ---- PriceFeed::is_stale() --------------------------------------------------
+
+    #[test]
+    fn test_is_stale() {
+        let feed = PriceFeed {
+            is_valid: true,
+            timestamp: 1_000,
+            ..PriceFeed::default()
+        };
+        // Fresh: current=1_060, max_age=60 → age=60, not stale
+        assert!(!feed.is_stale(1_060, 60));
+        // Stale: current=1_061, max_age=60 → age=61, stale
+        assert!(feed.is_stale(1_061, 60));
+    }
+
+    #[test]
+    fn test_is_stale_invalid_feed() {
+        // An invalid feed is always stale regardless of timestamp
+        let feed = PriceFeed {
+            is_valid: false,
+            timestamp: 1_000,
+            ..PriceFeed::default()
+        };
+        assert!(feed.is_stale(1_000, 9999));
     }
 }
 
