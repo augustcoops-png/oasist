@@ -144,3 +144,36 @@ The genesis-output directory is now fully functional with:
 - Verification tooling
 
 The setup is ready for immediate use with a Solana validator for local development and testing.
+
+## Update - 2026-02-25T02:38:43+00:00
+
+After the environment was refreshed, the local working files (keypairs and rocksdb) were regenerated to restore full functionality.
+
+### Actions Taken
+
+1. **Installed Dependencies**: Reinstalled `libudev-dev` in the fresh environment
+2. **Rebuilt Binaries**: Compiled `solana-genesis` and `solana-keygen` binaries
+3. **Regenerated Keypairs**: Created new keypair files for all accounts:
+   - `faucet.json` - Faucet account keypair (pubkey: 7NUihxFNcf78ddh3PCbwGX6LAYTynuxX7D4RN9MbqDM5)
+   - `identity.json` - Bootstrap validator identity (pubkey: 2R5124LsTDhx54CjUozzFFtZHtHhfwc4M9RsadiXf7rb)
+   - `vote-account.json` - Bootstrap validator vote account
+   - `stake-account.json` - Bootstrap validator stake account
+4. **Regenerated Genesis**: Created new genesis.bin with updated configuration
+5. **Updated Documentation**: Updated README.md with new genesis hash and details
+
+### New Genesis Configuration
+
+- **Genesis Hash**: 6ZjYRQFUHA2XzNHwLU29b9yzzw4s6WoAJUgJsuU6fiMy
+- **Creation Time**: 2026-02-25T02:38:43+00:00
+- **Shred Version**: 11371
+- **Hashes per Tick**: 506
+
+### Result
+
+The genesis-output directory has been updated and is now fully functional with:
+- New genesis binary files (committed to git)
+- Fresh keypair files (excluded from git)
+- Regenerated RocksDB ledger database (excluded from git)
+- Updated documentation
+
+All components verified and ready for validator use.
