@@ -115,6 +115,7 @@ members = [
     "validator",
     "version",
     "vote",
+    "wallet-api",
     "watchtower",
     "wen-restart",
     "zk-keygen",

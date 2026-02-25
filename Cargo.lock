@@ -3469,6 +3469,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
+name = "oasist-wallet-api"
+version = "2.0.0"
+dependencies = [
+ "dirs-next",
+ "hyper",
+ "rand 0.8.5",
+ "serde_json",
+ "solana-sdk",
+ "tiny-bip39",
+ "tokio",
+]
+
+[[package]]
 name = "object"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6168,12 +6181,14 @@ dependencies = [
  "bs58",
  "clap 3.2.23",
  "dirs-next",
+ "flate2",
  "num_cpus",
  "solana-clap-v3-utils",
  "solana-cli-config",
  "solana-remote-wallet",
  "solana-sdk",
  "solana-version",
+ "tar",
  "tempfile",
  "tiny-bip39",
 ]
