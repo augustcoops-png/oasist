@@ -425,6 +425,25 @@ fn app<'a>(num_threads: &'a str, crate_version: &'a str) -> Command<'a> {
                 ),
 
         )
+        .subcommand(
+            Command::new("issue-wallet-address")
+                .about("Issue a new OASIST wallet address for sending or receiving OASIST")
+                .disable_version_flag(true)
+                .arg(
+                    Arg::new("outfile")
+                        .short('o')
+                        .long("outfile")
+                        .value_name("FILEPATH")
+                        .takes_value(true)
+                        .help("Path to generated keypair file"),
+                )
+                .arg(
+                    Arg::new("force")
+                        .short('f')
+                        .long("force")
+                        .help("Overwrite the output file if it exists"),
+                )
+        )
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -716,6 +735,19 @@ fn do_main(matches: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
             for thread_handle in thread_handles {
                 thread_handle.join().unwrap();
             }
+        }
+        ("issue-wallet-address", matches) => {
+            let keypair = Keypair::new();
+            let pubkey = keypair.pubkey();
+
+            if matches.is_present("outfile") {
+                let outfile = matches.value_of("outfile").unwrap();
+                check_for_overwrite(outfile, matches)?;
+                output_keypair(&keypair, outfile, "wallet")
+                    .map_err(|err| format!("Unable to write {outfile}: {err}"))?;
+            }
+
+            println!("OASIST Wallet Address: {pubkey}");
         }
         ("verify", matches) => {
             let keypair = get_keypair_from_matches(matches, config, &mut wallet_manager)?;
@@ -1109,6 +1141,66 @@ mod tests {
             "--use-mnemonic",
             "--ends-with",
             "b:1",
+        ])
+        .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod issue_wallet_tests {
+    use {
+        super::*,
+        tempfile::{tempdir, TempDir},
+    };
+
+    fn process_test_command(args: &[&str]) -> Result<(), Box<dyn error::Error>> {
+        let default_num_threads = num_cpus::get().to_string();
+        let solana_version = solana_version::version!();
+        let app_matches = app(&default_num_threads, solana_version).get_matches_from(args);
+        do_main(&app_matches)
+    }
+
+    fn tmp_outfile_path(out_dir: &TempDir, name: &str) -> String {
+        let path = out_dir.path().join(name);
+        path.into_os_string().into_string().unwrap()
+    }
+
+    #[test]
+    fn test_issue_wallet_address() {
+        // success case without outfile
+        process_test_command(&["solana-keygen", "issue-wallet-address"]).unwrap();
+
+        // success case with outfile
+        let outfile_dir = tempdir().unwrap();
+        let outfile_path = tmp_outfile_path(&outfile_dir, "wallet-keypair.json");
+        process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--outfile",
+            &outfile_path,
+        ])
+        .unwrap();
+        assert!(std::path::Path::new(&outfile_path).exists());
+
+        // refuse to overwrite without --force
+        let result = process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--outfile",
+            &outfile_path,
+        ])
+        .unwrap_err()
+        .to_string();
+        let expected = format!("Refusing to overwrite {outfile_path} without --force flag");
+        assert_eq!(result, expected);
+
+        // allow overwrite with --force
+        process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--outfile",
+            &outfile_path,
+            "--force",
         ])
         .unwrap();
     }
