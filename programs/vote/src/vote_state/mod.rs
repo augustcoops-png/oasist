@@ -833,6 +833,9 @@ pub fn authorize<S: std::hash::BuildHasher>(
         .get_state::<VoteStateVersions>()?
         .convert_to_current();
 
+    // If rotation_signers is configured, at least one must have signed
+    verify_rotation_signer(&vote_state.rotation_signers, signers)?;
+
     match vote_authorize {
         VoteAuthorize::Voter => {
             let authorized_withdrawer_signer =
@@ -865,13 +868,20 @@ pub fn authorize<S: std::hash::BuildHasher>(
     set_vote_account_state(vote_account, vote_state, feature_set)
 }
 
-/// Update the node_pubkey, requires signature of the authorized voter
+/// Update the node_pubkey, requires signature of the authorized voter.
+/// When rotation_signers is configured, at least one must have signed.
+/// When rotation_fee > 0, the fee is deducted from the vote account and
+/// credited to the fee_recipient account (should be the old node_pubkey).
 pub fn update_validator_identity<S: std::hash::BuildHasher>(
-    vote_account: &mut BorrowedAccount,
+    transaction_context: &TransactionContext,
+    instruction_context: &InstructionContext,
+    vote_account_index: IndexOfAccount,
     node_pubkey: &Pubkey,
     signers: &HashSet<Pubkey, S>,
     feature_set: &FeatureSet,
 ) -> Result<(), InstructionError> {
+    let mut vote_account = instruction_context
+        .try_borrow_instruction_account(transaction_context, vote_account_index)?;
     let mut vote_state: VoteState = vote_account
         .get_state::<VoteStateVersions>()?
         .convert_to_current();
@@ -882,9 +892,32 @@ pub fn update_validator_identity<S: std::hash::BuildHasher>(
     // new node must say "yay"
     verify_authorized_signer(node_pubkey, signers)?;
 
+    // If rotation_signers is configured, at least one must have signed
+    verify_rotation_signer(&vote_state.rotation_signers, signers)?;
+
+    // Collect the rotation fee from the vote account to the fee recipient (old node_pubkey)
+    let rotation_fee = vote_state.rotation_fee;
+    if rotation_fee > 0 {
+        let num_accounts = instruction_context.get_number_of_instruction_accounts();
+        // Account at index 3 (if present) is the fee recipient (old node_pubkey)
+        if num_accounts > 3 {
+            vote_account.checked_sub_lamports(rotation_fee)?;
+            drop(vote_account);
+            let mut fee_recipient = instruction_context
+                .try_borrow_instruction_account(transaction_context, 3)?;
+            fee_recipient.checked_add_lamports(rotation_fee)?;
+            drop(fee_recipient);
+            // Re-borrow vote account to write new state
+            let mut vote_account = instruction_context
+                .try_borrow_instruction_account(transaction_context, vote_account_index)?;
+            vote_state.node_pubkey = *node_pubkey;
+            return set_vote_account_state(&mut vote_account, vote_state, feature_set);
+        }
+    }
+
     vote_state.node_pubkey = *node_pubkey;
 
-    set_vote_account_state(vote_account, vote_state, feature_set)
+    set_vote_account_state(&mut vote_account, vote_state, feature_set)
 }
 
 /// Update the vote account's commission
@@ -966,6 +999,92 @@ fn verify_authorized_signer<S: std::hash::BuildHasher>(
     } else {
         Err(InstructionError::MissingRequiredSignature)
     }
+}
+
+/// Check that at least one rotation signer has signed when rotation_signers is non-empty.
+fn verify_rotation_signer<S: std::hash::BuildHasher>(
+    rotation_signers: &[Pubkey],
+    signers: &HashSet<Pubkey, S>,
+) -> Result<(), InstructionError> {
+    if rotation_signers.is_empty() {
+        return Ok(());
+    }
+    if rotation_signers.iter().any(|s| signers.contains(s)) {
+        Ok(())
+    } else {
+        Err(InstructionError::MissingRequiredSignature)
+    }
+}
+
+/// Add an authorized rotation signer to the vote account.
+/// Requires the authorized_withdrawer to sign.
+pub fn add_rotation_signer<S: std::hash::BuildHasher>(
+    vote_account: &mut BorrowedAccount,
+    signer_pubkey: &Pubkey,
+    signers: &HashSet<Pubkey, S>,
+    feature_set: &FeatureSet,
+) -> Result<(), InstructionError> {
+    let mut vote_state: VoteState = vote_account
+        .get_state::<VoteStateVersions>()?
+        .convert_to_current();
+
+    verify_authorized_signer(&vote_state.authorized_withdrawer, signers)?;
+
+    if vote_state.rotation_signers.len() >= MAX_ROTATION_SIGNERS {
+        return Err(InstructionError::InvalidArgument);
+    }
+    if vote_state.rotation_signers.contains(signer_pubkey) {
+        return Err(InstructionError::InvalidArgument);
+    }
+    vote_state.rotation_signers.push(*signer_pubkey);
+
+    set_vote_account_state(vote_account, vote_state, feature_set)
+}
+
+/// Remove an authorized rotation signer from the vote account.
+/// Requires the authorized_withdrawer to sign.
+pub fn remove_rotation_signer<S: std::hash::BuildHasher>(
+    vote_account: &mut BorrowedAccount,
+    signer_pubkey: &Pubkey,
+    signers: &HashSet<Pubkey, S>,
+    feature_set: &FeatureSet,
+) -> Result<(), InstructionError> {
+    let mut vote_state: VoteState = vote_account
+        .get_state::<VoteStateVersions>()?
+        .convert_to_current();
+
+    verify_authorized_signer(&vote_state.authorized_withdrawer, signers)?;
+
+    if let Some(pos) = vote_state
+        .rotation_signers
+        .iter()
+        .position(|x| x == signer_pubkey)
+    {
+        vote_state.rotation_signers.remove(pos);
+    } else {
+        return Err(InstructionError::InvalidArgument);
+    }
+
+    set_vote_account_state(vote_account, vote_state, feature_set)
+}
+
+/// Set the rotation fee (in lamports) charged on validator identity rotation.
+/// Requires the authorized_withdrawer to sign.
+pub fn set_rotation_fee<S: std::hash::BuildHasher>(
+    vote_account: &mut BorrowedAccount,
+    fee: u64,
+    signers: &HashSet<Pubkey, S>,
+    feature_set: &FeatureSet,
+) -> Result<(), InstructionError> {
+    let mut vote_state: VoteState = vote_account
+        .get_state::<VoteStateVersions>()?
+        .convert_to_current();
+
+    verify_authorized_signer(&vote_state.authorized_withdrawer, signers)?;
+
+    vote_state.rotation_fee = fee;
+
+    set_vote_account_state(vote_account, vote_state, feature_set)
 }
 
 /// Withdraw funds from the vote account
