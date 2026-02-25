@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-INSTALLER_VERSION="2.0.0"
+INSTALLER_VERSION="2.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 info() {
@@ -99,7 +99,7 @@ main() {
     info "Installer version: ${INSTALLER_VERSION}"
 
     local extra_args=()
-    $update_mode && extra_args+=("--update")
+    if $update_mode; then extra_args+=("--update"); fi
 
     case "$platform" in
         linux)

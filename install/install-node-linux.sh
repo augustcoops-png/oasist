@@ -10,10 +10,10 @@
 
 set -euo pipefail
 
-INSTALLER_VERSION="2.0.0"
+INSTALLER_VERSION="2.1.0"
 SOLANA_INSTALL_INIT_URL="https://release.solana.com/stable/install"
-# Minimum Node.js major version for web3.js / tooling
-NODE_MIN_VERSION=18
+# Node.js Active LTS version for web3.js / tooling
+NODE_MIN_VERSION=20
 UPDATE_MODE=false
 
 info() {
@@ -126,13 +126,12 @@ install_nodejs() {
     fi
 
     info "Installing Node.js v${NODE_MIN_VERSION} via nvm..."
-    if ! check_cmd nvm; then
+    export NVM_DIR="$HOME/.nvm"
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-        # shellcheck source=/dev/null
-        export NVM_DIR="$HOME/.nvm"
-        # shellcheck source=/dev/null
-        [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
     fi
+    # shellcheck source=/dev/null
+    source "$NVM_DIR/nvm.sh"
     nvm install "${NODE_MIN_VERSION}" --lts
     nvm use "${NODE_MIN_VERSION}"
     nvm alias default "${NODE_MIN_VERSION}"

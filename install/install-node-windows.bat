@@ -15,7 +15,7 @@
 
 setlocal enabledelayedexpansion
 
-set "INSTALLER_VERSION=2.0.0"
+set "INSTALLER_VERSION=2.1.0"
 set "SOLANA_INSTALLER_URL=https://release.solana.com/stable/solana-install-init-x86_64-pc-windows-msvc.exe"
 
 echo.

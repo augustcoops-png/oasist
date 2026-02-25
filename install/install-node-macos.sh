@@ -10,9 +10,9 @@
 
 set -euo pipefail
 
-INSTALLER_VERSION="2.0.0"
+INSTALLER_VERSION="2.1.0"
 SOLANA_INSTALL_INIT_URL="https://release.solana.com/stable/install"
-NODE_MIN_VERSION=18
+NODE_MIN_VERSION=20
 UPDATE_MODE=false
 
 info() {

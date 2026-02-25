@@ -28,7 +28,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$InstallerVersion   = '2.0.0'
+$InstallerVersion   = '2.1.0'
 $SolanaInstallerUrl = 'https://release.solana.com/stable/solana-install-init-x86_64-pc-windows-msvc.exe'
 $RustupInitUrl      = 'https://win.rustup.rs/x86_64'
 $SolanaBinDir       = "$env:USERPROFILE\.local\share\solana\install\active_release\bin"

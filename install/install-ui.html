@@ -96,7 +96,7 @@
   </div>
 </div>
 
-<footer>v2.0.0 &mdash; <a href="https://github.com/augustcoops-png/oasist" style="color:#9945ff">augustcoops-png/oasist</a></footer>
+<footer>v2.1.0 &mdash; <a href="https://github.com/augustcoops-png/oasist" style="color:#9945ff">augustcoops-png/oasist</a></footer>
 
 <script>
 function show(id, btn) {
@@ -124,6 +124,20 @@ function copy(id, btn) {
     setTimeout(function(){ btn.textContent='Copy command'; btn.classList.remove('copied'); }, 2000);
   }
 }
+// Auto-select the tab that matches the visitor's platform
+(function(){
+  var ua = navigator.userAgent || '';
+  var id = 'linux'; // default
+  if (/android/i.test(ua)) {
+    id = 'termux';
+  } else if (/win/i.test(ua) && !/linux/i.test(ua)) {
+    id = 'windows';
+  } else if (/mac|iphone|ipad|ipod/i.test(ua)) {
+    id = 'macos';
+  }
+  var btn = document.querySelector('.tab[onclick="show(\''+id+'\',this)"]');
+  if (btn) show(id, btn);
+})();
 </script>
 </body>
 </html>
