@@ -48,3 +48,7 @@ See [Solana validator prerequisites](./operations/prerequisites.md).
 ### What are the economics of running a validator?
 
 See [economics of running a validator](./operations/validator-or-rpc-node.md#economics-of-running-a-consensus-validator).
+
+### Are agents real life people?
+
+No, agents are not real life people. In the context of this documentation, "agents" refers to automated software programs (such as AI-powered coding agents or automated bots) that perform tasks on behalf of users. They are not human beings.
