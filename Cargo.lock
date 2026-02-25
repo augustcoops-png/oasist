@@ -6470,6 +6470,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-oracle-adapter"
+version = "2.0.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "serde_derive",
+ "solana-logger",
+ "solana-program-runtime",
+ "solana-sdk",
+ "thiserror",
+]
+
+[[package]]
 name = "solana-perf"
 version = "2.0.0"
 dependencies = [
