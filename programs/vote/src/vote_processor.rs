@@ -131,8 +131,11 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
             let node_pubkey = transaction_context.get_key_of_account_at_index(
                 instruction_context.get_index_of_instruction_account_in_transaction(1)?,
             )?;
+            drop(me);
             vote_state::update_validator_identity(
-                &mut me,
+                transaction_context,
+                instruction_context,
+                0,
                 node_pubkey,
                 &signers,
                 &invoke_context.feature_set,
@@ -227,6 +230,30 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
                 vote_authorize,
                 &signers,
                 &clock,
+                &invoke_context.feature_set,
+            )
+        }
+        VoteInstruction::AddRotationSigner(signer_pubkey) => {
+            vote_state::add_rotation_signer(
+                &mut me,
+                &signer_pubkey,
+                &signers,
+                &invoke_context.feature_set,
+            )
+        }
+        VoteInstruction::RemoveRotationSigner(signer_pubkey) => {
+            vote_state::remove_rotation_signer(
+                &mut me,
+                &signer_pubkey,
+                &signers,
+                &invoke_context.feature_set,
+            )
+        }
+        VoteInstruction::SetRotationFee(fee) => {
+            vote_state::set_rotation_fee(
+                &mut me,
+                fee,
+                &signers,
                 &invoke_context.feature_set,
             )
         }
@@ -741,6 +768,317 @@ mod tests {
             .unwrap()
             .convert_to_current();
         assert_eq!(vote_state.commission, 0);
+    }
+
+    #[test]
+    fn test_add_remove_rotation_signer() {
+        let (vote_pubkey, _authorized_voter, authorized_withdrawer, vote_account) =
+            create_test_account_with_authorized();
+        let rotation_signer = solana_sdk::pubkey::new_rand();
+
+        let transaction_accounts = vec![
+            (vote_pubkey, vote_account),
+            (authorized_withdrawer, AccountSharedData::default()),
+        ];
+        let instruction_accounts = vec![
+            AccountMeta {
+                pubkey: vote_pubkey,
+                is_signer: false,
+                is_writable: true,
+            },
+            AccountMeta {
+                pubkey: authorized_withdrawer,
+                is_signer: true,
+                is_writable: false,
+            },
+        ];
+
+        // AddRotationSigner should succeed
+        let accounts = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(rotation_signer)).unwrap(),
+            transaction_accounts.clone(),
+            instruction_accounts.clone(),
+            Ok(()),
+        );
+        let vote_state: VoteState = StateMut::<VoteStateVersions>::state(&accounts[0])
+            .unwrap()
+            .convert_to_current();
+        assert!(vote_state.rotation_signers.contains(&rotation_signer));
+
+        // AddRotationSigner should fail when withdrawer doesn't sign
+        let mut no_sig_accounts = instruction_accounts.clone();
+        no_sig_accounts[1].is_signer = false;
+        process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(rotation_signer)).unwrap(),
+            transaction_accounts.clone(),
+            no_sig_accounts,
+            Err(InstructionError::MissingRequiredSignature),
+        );
+
+        // RemoveRotationSigner should succeed
+        let accounts = process_instruction(
+            &serialize(&VoteInstruction::RemoveRotationSigner(rotation_signer)).unwrap(),
+            vec![(vote_pubkey, accounts[0].clone()), (authorized_withdrawer, AccountSharedData::default())],
+            instruction_accounts.clone(),
+            Ok(()),
+        );
+        let vote_state: VoteState = StateMut::<VoteStateVersions>::state(&accounts[0])
+            .unwrap()
+            .convert_to_current();
+        assert!(!vote_state.rotation_signers.contains(&rotation_signer));
+    }
+
+    #[test]
+    fn test_set_rotation_fee() {
+        let (vote_pubkey, _authorized_voter, authorized_withdrawer, vote_account) =
+            create_test_account_with_authorized();
+        let transaction_accounts = vec![
+            (vote_pubkey, vote_account),
+            (authorized_withdrawer, AccountSharedData::default()),
+        ];
+        let instruction_accounts = vec![
+            AccountMeta {
+                pubkey: vote_pubkey,
+                is_signer: false,
+                is_writable: true,
+            },
+            AccountMeta {
+                pubkey: authorized_withdrawer,
+                is_signer: true,
+                is_writable: false,
+            },
+        ];
+
+        // SetRotationFee should succeed
+        let accounts = process_instruction(
+            &serialize(&VoteInstruction::SetRotationFee(500)).unwrap(),
+            transaction_accounts.clone(),
+            instruction_accounts.clone(),
+            Ok(()),
+        );
+        let vote_state: VoteState = StateMut::<VoteStateVersions>::state(&accounts[0])
+            .unwrap()
+            .convert_to_current();
+        assert_eq!(vote_state.rotation_fee, 500);
+
+        // SetRotationFee should fail when withdrawer doesn't sign
+        let mut no_sig_accounts = instruction_accounts.clone();
+        no_sig_accounts[1].is_signer = false;
+        process_instruction(
+            &serialize(&VoteInstruction::SetRotationFee(999)).unwrap(),
+            transaction_accounts.clone(),
+            no_sig_accounts,
+            Err(InstructionError::MissingRequiredSignature),
+        );
+    }
+
+    #[test]
+    fn test_rotation_signer_required_for_authorize() {
+        let (vote_pubkey, authorized_voter, authorized_withdrawer, vote_account) =
+            create_test_account_with_authorized();
+        let rotation_signer = solana_sdk::pubkey::new_rand();
+        let new_voter = solana_sdk::pubkey::new_rand();
+
+        // First, add a rotation signer
+        let add_accounts = vec![
+            (vote_pubkey, vote_account),
+            (authorized_withdrawer, AccountSharedData::default()),
+        ];
+        let add_instruction_accounts = vec![
+            AccountMeta {
+                pubkey: vote_pubkey,
+                is_signer: false,
+                is_writable: true,
+            },
+            AccountMeta {
+                pubkey: authorized_withdrawer,
+                is_signer: true,
+                is_writable: false,
+            },
+        ];
+        let accounts = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(rotation_signer)).unwrap(),
+            add_accounts,
+            add_instruction_accounts,
+            Ok(()),
+        );
+
+        // Now try to authorize a new voter WITHOUT the rotation signer - should fail
+        let clock = Clock::default();
+        let authorize_accounts = vec![
+            (vote_pubkey, accounts[0].clone()),
+            (sysvar::clock::id(), account::create_account_shared_data_for_test(&clock)),
+            (authorized_withdrawer, AccountSharedData::default()),
+            (authorized_voter, AccountSharedData::default()),
+        ];
+        let authorize_instruction_accounts = vec![
+            AccountMeta {
+                pubkey: vote_pubkey,
+                is_signer: false,
+                is_writable: true,
+            },
+            AccountMeta {
+                pubkey: sysvar::clock::id(),
+                is_signer: false,
+                is_writable: false,
+            },
+            AccountMeta {
+                pubkey: authorized_withdrawer,
+                is_signer: true,
+                is_writable: false,
+            },
+        ];
+        process_instruction(
+            &serialize(&VoteInstruction::Authorize(new_voter, VoteAuthorize::Voter)).unwrap(),
+            authorize_accounts.clone(),
+            authorize_instruction_accounts.clone(),
+            Err(InstructionError::MissingRequiredSignature),
+        );
+
+        // Authorize WITH the rotation signer - should succeed
+        let mut with_rotation_accounts = authorize_accounts.clone();
+        with_rotation_accounts.push((rotation_signer, AccountSharedData::default()));
+        let mut with_rotation_instruction_accounts = authorize_instruction_accounts.clone();
+        with_rotation_instruction_accounts.push(AccountMeta {
+            pubkey: rotation_signer,
+            is_signer: true,
+            is_writable: false,
+        });
+        process_instruction(
+            &serialize(&VoteInstruction::Authorize(new_voter, VoteAuthorize::Voter)).unwrap(),
+            with_rotation_accounts,
+            with_rotation_instruction_accounts,
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn test_withdraw_validation_fee_split_to_signers() {
+        // Set up a vote account with rent-exempt reserve + withdrawal + signer fees.
+        // Each signer gets 0.5% of the withdrawal ON TOP of what the recipient receives.
+        let rent = Rent::default();
+        let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
+        let withdraw_lamports: u64 = 1_000;
+
+        // fee_per_signer = floor(1000 * 50 / 10_000) = 5 lamports each
+        let fee_per_signer = withdraw_lamports * 50 / 10_000; // = 5
+        let total_fees = fee_per_signer * 2;                   // = 10
+        // vote account must hold: rent_exempt + withdraw + total_fees
+        let initial_balance = rent_exempt + withdraw_lamports + total_fees;
+
+        let node_pubkey = solana_sdk::pubkey::new_rand();
+        let authorized_voter = solana_sdk::pubkey::new_rand();
+        let authorized_withdrawer = solana_sdk::pubkey::new_rand();
+        let signer1 = solana_sdk::pubkey::new_rand();
+        let signer2 = solana_sdk::pubkey::new_rand();
+
+        let vote_pubkey = solana_sdk::pubkey::new_rand();
+        let base_account = vote_state::create_account_with_authorized(
+            &node_pubkey,
+            &authorized_voter,
+            &authorized_withdrawer,
+            0,
+            initial_balance,
+        );
+
+        let add_signer_instruction_accounts = vec![
+            AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+            AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+        ];
+
+        // Add signer1
+        let accounts_after = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(signer1)).unwrap(),
+            vec![(vote_pubkey, base_account), (authorized_withdrawer, AccountSharedData::default())],
+            add_signer_instruction_accounts.clone(),
+            Ok(()),
+        );
+        // Add signer2
+        let accounts_after2 = process_instruction(
+            &serialize(&VoteInstruction::AddRotationSigner(signer2)).unwrap(),
+            vec![(vote_pubkey, accounts_after[0].clone()), (authorized_withdrawer, AccountSharedData::default())],
+            add_signer_instruction_accounts.clone(),
+            Ok(()),
+        );
+
+        let vote_account_with_signers = accounts_after2[0].clone();
+        assert_eq!(vote_account_with_signers.lamports(), initial_balance);
+
+        let recipient = solana_sdk::pubkey::new_rand();
+
+        let final_accounts = process_instruction(
+            &serialize(&VoteInstruction::Withdraw(withdraw_lamports)).unwrap(),
+            vec![
+                (vote_pubkey, vote_account_with_signers),
+                (recipient, AccountSharedData::default()),
+                (signer1, AccountSharedData::default()),
+                (signer2, AccountSharedData::default()),
+                (sysvar::rent::id(), account::create_account_shared_data_for_test(&rent)),
+                (sysvar::clock::id(), create_default_clock_account()),
+                (authorized_withdrawer, AccountSharedData::default()),
+            ],
+            vec![
+                AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: signer1, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: signer2, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        // vote account: lost withdraw + total signer fees
+        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports - total_fees);
+        // recipient: received the full requested amount
+        assert_eq!(final_accounts[1].lamports(), withdraw_lamports);
+        // signer1: received 0.5% of the withdrawal
+        assert_eq!(final_accounts[2].lamports(), fee_per_signer);
+        // signer2: received 0.5% of the withdrawal
+        assert_eq!(final_accounts[3].lamports(), fee_per_signer);
+    }
+
+    #[test]
+    fn test_withdraw_no_fee_without_rotation_signers() {
+        // Ensure the 0.5%-per-signer fee is NOT applied when no rotation signers are configured.
+        let rent = Rent::default();
+        let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
+        let withdraw_lamports = 1_000u64;
+        let initial_balance = rent_exempt + withdraw_lamports;
+
+        let node_pubkey = solana_sdk::pubkey::new_rand();
+        let authorized_voter = solana_sdk::pubkey::new_rand();
+        let authorized_withdrawer = solana_sdk::pubkey::new_rand();
+        let vote_pubkey = solana_sdk::pubkey::new_rand();
+        let vote_account = vote_state::create_account_with_authorized(
+            &node_pubkey,
+            &authorized_voter,
+            &authorized_withdrawer,
+            0,
+            initial_balance,
+        );
+
+        let recipient = solana_sdk::pubkey::new_rand();
+
+        let final_accounts = process_instruction(
+            &serialize(&VoteInstruction::Withdraw(withdraw_lamports)).unwrap(),
+            vec![
+                (vote_pubkey, vote_account),
+                (recipient, AccountSharedData::default()),
+                (sysvar::rent::id(), account::create_account_shared_data_for_test(&rent)),
+                (sysvar::clock::id(), create_default_clock_account()),
+                (authorized_withdrawer, AccountSharedData::default()),
+            ],
+            vec![
+                AccountMeta { pubkey: vote_pubkey, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: recipient, is_signer: false, is_writable: true },
+                AccountMeta { pubkey: authorized_withdrawer, is_signer: true, is_writable: false },
+            ],
+            Ok(()),
+        );
+
+        // Without rotation signers: recipient gets the full requested amount
+        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports);
+        assert_eq!(final_accounts[1].lamports(), withdraw_lamports);
     }
 
     #[test]

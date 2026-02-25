@@ -146,6 +146,31 @@ pub enum VoteInstruction {
         #[serde(with = "serde_compact_vote_state_update")] VoteStateUpdate,
         Hash,
     ),
+
+    /// Add an authorized rotation signer to the vote account.
+    /// When rotation_signers is non-empty, rotation operations require at least
+    /// one of these signers.
+    ///
+    /// # Account references
+    ///   0. `[WRITE]` Vote account to update
+    ///   1. `[SIGNER]` Withdraw authority
+    AddRotationSigner(Pubkey),
+
+    /// Remove an authorized rotation signer from the vote account.
+    ///
+    /// # Account references
+    ///   0. `[WRITE]` Vote account to update
+    ///   1. `[SIGNER]` Withdraw authority
+    RemoveRotationSigner(Pubkey),
+
+    /// Set the rotation fee (in lamports) charged on validator identity rotation.
+    /// The fee is deducted from the vote account balance and credited to the
+    /// current node_pubkey (validator server owner).
+    ///
+    /// # Account references
+    ///   0. `[WRITE]` Vote account to update
+    ///   1. `[SIGNER]` Withdraw authority
+    SetRotationFee(u64),
 }
 
 impl VoteInstruction {
@@ -527,4 +552,58 @@ pub fn withdraw(
     ];
 
     Instruction::new_with_bincode(id(), &VoteInstruction::Withdraw(lamports), account_metas)
+}
+
+/// Add an authorized rotation signer to a vote account.
+/// Requires the authorized_withdrawer to sign.
+pub fn add_rotation_signer(
+    vote_pubkey: &Pubkey,
+    authorized_withdrawer_pubkey: &Pubkey,
+    signer_pubkey: &Pubkey,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*vote_pubkey, false),
+        AccountMeta::new_readonly(*authorized_withdrawer_pubkey, true),
+    ];
+    Instruction::new_with_bincode(
+        id(),
+        &VoteInstruction::AddRotationSigner(*signer_pubkey),
+        account_metas,
+    )
+}
+
+/// Remove an authorized rotation signer from a vote account.
+/// Requires the authorized_withdrawer to sign.
+pub fn remove_rotation_signer(
+    vote_pubkey: &Pubkey,
+    authorized_withdrawer_pubkey: &Pubkey,
+    signer_pubkey: &Pubkey,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*vote_pubkey, false),
+        AccountMeta::new_readonly(*authorized_withdrawer_pubkey, true),
+    ];
+    Instruction::new_with_bincode(
+        id(),
+        &VoteInstruction::RemoveRotationSigner(*signer_pubkey),
+        account_metas,
+    )
+}
+
+/// Set the rotation fee on a vote account.
+/// Requires the authorized_withdrawer to sign.
+pub fn set_rotation_fee(
+    vote_pubkey: &Pubkey,
+    authorized_withdrawer_pubkey: &Pubkey,
+    fee: u64,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*vote_pubkey, false),
+        AccountMeta::new_readonly(*authorized_withdrawer_pubkey, true),
+    ];
+    Instruction::new_with_bincode(
+        id(),
+        &VoteInstruction::SetRotationFee(fee),
+        account_metas,
+    )
 }

@@ -44,6 +44,14 @@ const DEFAULT_PRIOR_VOTERS_OFFSET: usize = 114;
 // Number of slots of grace period for which maximum vote credits are awarded - votes landing within this number of slots of the slot that is being voted on are awarded full credits.
 pub const VOTE_CREDITS_GRACE_SLOTS: u8 = 2;
 
+/// Maximum number of authorized rotation signers per vote account.
+pub const MAX_ROTATION_SIGNERS: usize = 10;
+
+/// Validation and signing fee per signer in basis points (50 bps = 0.5%).
+/// Each of the first two rotation signers receives this share of every withdrawal
+/// as an additional charge on top of the requested amount.
+pub const VALIDATION_FEE_PER_SIGNER_BPS: u64 = 50;
+
 // Maximum number of credits to award for a vote; this number of credits is awarded to votes on slots that land within the grace period. After that grace period, vote credits are reduced.
 pub const VOTE_CREDITS_MAXIMUM_PER_SLOT: u8 = 16;
 
@@ -342,6 +350,15 @@ pub struct VoteState {
 
     /// most recent timestamp submitted with a vote
     pub last_timestamp: BlockTimestamp,
+
+    /// Authorized signers for validator identity rotation.
+    /// When non-empty, any rotation operation must be signed by at least one of these keys.
+    /// Limited to MAX_ROTATION_SIGNERS entries.
+    pub rotation_signers: Vec<Pubkey>,
+
+    /// Fee in lamports paid to the node_pubkey on validator identity rotation.
+    /// Collected from the vote account balance on UpdateValidatorIdentity.
+    pub rotation_fee: u64,
 }
 
 impl VoteState {
@@ -390,9 +407,10 @@ impl VoteState {
     }
 
     /// Upper limit on the size of the Vote State
-    /// when votes.len() is MAX_LOCKOUT_HISTORY.
+    /// when votes.len() is MAX_LOCKOUT_HISTORY and rotation_signers has MAX_ROTATION_SIGNERS entries.
     pub const fn size_of() -> usize {
-        3762 // see test_vote_state_size_of.
+        // 3762 (previous max) + 8 (Vec length prefix) + MAX_ROTATION_SIGNERS * 32 (pubkeys) + 8 (rotation_fee)
+        3762 + 8 + MAX_ROTATION_SIGNERS * 32 + 8 // see test_vote_state_size_of
     }
 
     // we retain bincode deserialize for not(target_os = "solana")
@@ -420,8 +438,10 @@ impl VoteState {
         input: &[u8],
         vote_state: &mut VoteState,
     ) -> Result<(), InstructionError> {
-        let minimum_size =
-            serialized_size(vote_state).map_err(|_| InstructionError::InvalidAccountData)?;
+        // Use VoteState1_14_11 as the minimum size baseline: rotation fields are
+        // optional and absent in pre-existing V1_14_11 accounts.
+        let minimum_size = serialized_size(&VoteState1_14_11::default())
+            .map_err(|_| InstructionError::InvalidAccountData)?;
         if (input.len() as u64) < minimum_size {
             return Err(InstructionError::InvalidAccountData);
         }
@@ -508,6 +528,7 @@ impl VoteState {
             root_slot: Some(std::u64::MAX),
             epoch_credits: vec![(0, 0, 0); MAX_EPOCH_CREDITS_HISTORY],
             authorized_voters,
+            rotation_signers: vec![Pubkey::default(); MAX_ROTATION_SIGNERS],
             ..Self::default()
         }
     }

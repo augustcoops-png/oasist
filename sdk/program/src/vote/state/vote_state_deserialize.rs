@@ -23,6 +23,8 @@ pub(super) fn deserialize_vote_state_into(
     read_prior_voters_into(cursor, vote_state)?;
     read_epoch_credits_into(cursor, vote_state)?;
     read_last_timestamp_into(cursor, vote_state)?;
+    // Rotation fields are optional for backward compatibility with pre-existing accounts
+    read_rotation_config_into(cursor, vote_state)?;
 
     Ok(())
 }
@@ -137,6 +139,33 @@ fn read_last_timestamp_into<T: AsRef<[u8]>>(
     let timestamp = read_i64(cursor)?;
 
     vote_state.last_timestamp = BlockTimestamp { slot, timestamp };
+
+    Ok(())
+}
+
+fn read_rotation_config_into(
+    cursor: &mut Cursor<&[u8]>,
+    vote_state: &mut VoteState,
+) -> Result<(), InstructionError> {
+    // Rotation fields are optional for backward compatibility with accounts
+    // that were serialized before this feature was added. If there is no
+    // remaining data, leave the fields at their defaults (empty / 0).
+    let remaining = cursor.get_ref().len() as u64;
+    if cursor.position() >= remaining {
+        return Ok(());
+    }
+
+    let signer_count = read_u64(cursor)?;
+    for _ in 0..signer_count {
+        let pubkey = read_pubkey(cursor)?;
+        vote_state.rotation_signers.push(pubkey);
+    }
+
+    // Only read rotation_fee if there is still data remaining
+    let remaining = cursor.get_ref().len() as u64;
+    if cursor.position() < remaining {
+        vote_state.rotation_fee = read_u64(cursor)?;
+    }
 
     Ok(())
 }

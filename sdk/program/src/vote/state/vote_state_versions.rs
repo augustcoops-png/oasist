@@ -38,6 +38,9 @@ impl VoteStateVersions {
                     epoch_credits: state.epoch_credits.clone(),
 
                     last_timestamp: state.last_timestamp.clone(),
+
+                    rotation_signers: Vec::default(),
+                    rotation_fee: 0,
                 }
             }
 
@@ -57,6 +60,9 @@ impl VoteStateVersions {
                 epoch_credits: state.epoch_credits,
 
                 last_timestamp: state.last_timestamp,
+
+                rotation_signers: Vec::default(),
+                rotation_fee: 0,
             },
 
             VoteStateVersions::Current(state) => *state,
