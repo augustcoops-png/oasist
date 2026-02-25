@@ -7,7 +7,10 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - PORT=${PORT:-3000}
-      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      # SOLANA_RPC_URLS takes priority over SOLANA_RPC_URL.
+      # When neither is set the built-in public pool of 15 mainnet nodes is used.
+      - SOLANA_RPC_URLS=${SOLANA_RPC_URLS:-}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3000}/health"]

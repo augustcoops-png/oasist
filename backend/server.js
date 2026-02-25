@@ -4,9 +4,9 @@ const path = require("path");
 const express = require("express");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const { RpcPool, PUBLIC_ENDPOINTS, parseUrls } = require("./rpcPool");
 
 const SPEC_PATH = path.resolve(__dirname, "../docs/static/openapi.json");
-const DEFAULT_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Whitelist of every JSON-RPC method described in the OpenAPI spec.
@@ -16,13 +16,50 @@ const KNOWN_METHODS = new Set(
 );
 
 /**
+ * Build the default RpcPool from environment variables or the built-in
+ * public endpoint list.
+ *
+ * Priority:
+ *   1. SOLANA_RPC_URLS — comma-separated list of URLs
+ *   2. SOLANA_RPC_URL  — single URL (legacy)
+ *   3. Built-in public mainnet pool (15 endpoints)
+ *
+ * @returns {RpcPool}
+ */
+function buildDefaultPool() {
+  const multiUrls = parseUrls(process.env.SOLANA_RPC_URLS || "");
+  if (multiUrls.length > 0) return new RpcPool(multiUrls);
+
+  const singleUrl = process.env.SOLANA_RPC_URL;
+  if (singleUrl) return new RpcPool([singleUrl]);
+
+  return new RpcPool(PUBLIC_ENDPOINTS.mainnet);
+}
+
+/**
  * Build and return a configured Express application.
  * Kept as a separate export so tests can import it without starting a live server.
  *
- * @param {string} [rpcUrl] - Solana JSON-RPC endpoint to proxy requests to.
+ * @param {string | string[] | RpcPool} [urls]
+ *   - A single URL string           → single-endpoint pool
+ *   - An array of URL strings       → multi-endpoint pool
+ *   - An RpcPool instance           → used as-is
+ *   - undefined / omitted           → default pool (env vars or public list)
  * @returns {import('express').Application}
  */
-function buildApp(rpcUrl = DEFAULT_RPC_URL) {
+function buildApp(urls) {
+  // Normalise input to an RpcPool.
+  let pool;
+  if (urls instanceof RpcPool) {
+    pool = urls;
+  } else if (typeof urls === "string") {
+    pool = new RpcPool([urls]);
+  } else if (Array.isArray(urls)) {
+    pool = new RpcPool(urls);
+  } else {
+    pool = buildDefaultPool();
+  }
+
   const app = express();
 
   // Parse incoming JSON bodies.
@@ -71,6 +108,15 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
   });
 
   /**
+   * GET /endpoints
+   * Returns the active upstream RPC endpoint pool.
+   * Useful for operators to verify which nodes are in rotation.
+   */
+  app.get("/endpoints", (_req, res) => {
+    res.json({ count: pool.size(), endpoints: pool.endpoints() });
+  });
+
+  /**
    * GET /openapi.json
    * Serve the OpenAPI 3.0.3 spec that describes the Solana JSON-RPC API.
    */
@@ -111,7 +157,7 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
   }
 
   /**
-   * Forward a single valid JSON-RPC 2.0 object to the upstream cluster.
+   * Forward a single valid JSON-RPC 2.0 object to one upstream endpoint.
    *
    * @param {string} rpcUrl
    * @param {object} rpcReq
@@ -140,15 +186,37 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
   }
 
   /**
+   * Proxy a single JSON-RPC request to the pool with automatic failover.
+   *
+   * Tries each endpoint in round-robin order.  If an endpoint returns a
+   * network-level 502 (connection refused / DNS failure), the next endpoint
+   * in the pool is tried automatically.  The first non-502 response — or the
+   * final 502 if every endpoint fails — is returned to the caller.
+   *
+   * @param {object} rpcReq
+   * @returns {Promise<{ status: number, body: object }>}
+   */
+  async function proxyWithFallback(rpcReq) {
+    const urls = pool.ordered();
+    let lastResult;
+    for (const url of urls) {
+      lastResult = await proxyOne(url, rpcReq);
+      if (lastResult.status !== 502) return lastResult;
+    }
+    return lastResult;
+  }
+
+  /**
    * POST /
    * Proxy a JSON-RPC 2.0 request (single object OR batch array) to the
-   * configured Solana cluster and return the response verbatim.
+   * upstream pool and return the response verbatim.
    *
    * Batch semantics follow JSON-RPC 2.0 §6:
    *   - An empty array returns a 400 error.
    *   - Each element is validated individually; invalid elements get an inline
    *     error response rather than aborting the whole batch.
-   *   - All valid requests are forwarded to the upstream in parallel.
+   *   - All valid requests are forwarded to the upstream in parallel with
+   *     automatic per-request failover.
    */
   app.post("/", async (req, res) => {
     const body = req.body;
@@ -167,7 +235,7 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
         body.map(async (item) => {
           const err = validateRequest(item);
           if (err) return err;
-          const { body: responseBody } = await proxyOne(rpcUrl, item);
+          const { body: responseBody } = await proxyWithFallback(item);
           return responseBody;
         })
       );
@@ -180,7 +248,7 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
       return res.status(400).json(validationErr);
     }
 
-    const { status, body: responseBody } = await proxyOne(rpcUrl, body);
+    const { status, body: responseBody } = await proxyWithFallback(body);
     return res.status(status).json(responseBody);
   });
 
@@ -189,12 +257,15 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
 
 // Start the server only when this file is run directly (not when it is required by tests).
 if (require.main === module) {
-  const app = buildApp();
+  const pool = buildDefaultPool();
+  const app = buildApp(pool);
   const server = app.listen(PORT, () => {
     console.log(`oasist backend listening on http://localhost:${PORT}`);
-    console.log(`  OpenAPI spec : http://localhost:${PORT}/openapi.json`);
-    console.log(`  Methods list : http://localhost:${PORT}/methods`);
-    console.log(`  RPC proxy    : POST http://localhost:${PORT}/  →  ${DEFAULT_RPC_URL}`);
+    console.log(`  OpenAPI spec  : http://localhost:${PORT}/openapi.json`);
+    console.log(`  Methods list  : http://localhost:${PORT}/methods`);
+    console.log(`  Endpoint pool : http://localhost:${PORT}/endpoints  (${pool.size()} nodes)`);
+    console.log(`  RPC proxy     : POST http://localhost:${PORT}/`);
+    pool.endpoints().forEach((url, i) => console.log(`    [${i + 1}] ${url}`));
   });
 
   // Graceful shutdown — finish in-flight requests before exiting.
@@ -215,4 +286,5 @@ if (require.main === module) {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-module.exports = { buildApp };
+module.exports = { buildApp, buildDefaultPool };
+

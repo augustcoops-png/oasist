@@ -198,3 +198,80 @@ describe("OPTIONS preflight", () => {
     expect(res.status).toBe(204);
   });
 });
+
+// ─── GET /endpoints ───────────────────────────────────────────────────────────
+describe("GET /endpoints", () => {
+  it("returns 200 with JSON content-type", async () => {
+    const app = buildApp();
+    const res = await request(app).get("/endpoints");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+  });
+
+  it("returns count and endpoints array", async () => {
+    const app = buildApp();
+    const res = await request(app).get("/endpoints");
+    expect(typeof res.body.count).toBe("number");
+    expect(Array.isArray(res.body.endpoints)).toBe(true);
+    expect(res.body.count).toBe(res.body.endpoints.length);
+  });
+
+  it("reflects a single-URL pool", async () => {
+    const app = buildApp("https://api.devnet.solana.com");
+    const res = await request(app).get("/endpoints");
+    expect(res.body.count).toBe(1);
+    expect(res.body.endpoints).toEqual(["https://api.devnet.solana.com"]);
+  });
+
+  it("reflects a multi-URL pool", async () => {
+    const urls = [
+      "https://api.mainnet-beta.solana.com",
+      "https://rpc.ankr.com/solana",
+      "https://solana.drpc.org",
+    ];
+    const app = buildApp(urls);
+    const res = await request(app).get("/endpoints");
+    expect(res.body.count).toBe(3);
+    expect(res.body.endpoints).toEqual(urls);
+  });
+
+  it("default pool includes the public mainnet list (≥10 endpoints)", async () => {
+    const app = buildApp();
+    const res = await request(app).get("/endpoints");
+    expect(res.body.count).toBeGreaterThanOrEqual(10);
+  });
+
+  it("sets CORS header", async () => {
+    const app = buildApp();
+    const res = await request(app).get("/endpoints");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+  });
+});
+
+// ─── Multi-URL pool failover ───────────────────────────────────────────────────
+describe("POST / (multi-URL pool failover)", () => {
+  it("returns 502 when all pool endpoints are unreachable", async () => {
+    // Both ports are intentionally unreachable.
+    const app = buildApp([
+      "http://127.0.0.1:19997",
+      "http://127.0.0.1:19998",
+    ]);
+    const res = await request(app)
+      .post("/")
+      .send({ jsonrpc: "2.0", id: 1, method: "getBalance", params: ["pub"] });
+    expect(res.status).toBe(502);
+    expect(res.body.error.code).toBe(-32603);
+  });
+
+  it("method validation still works with a multi-URL pool", async () => {
+    const app = buildApp([
+      "http://127.0.0.1:19997",
+      "http://127.0.0.1:19998",
+    ]);
+    const res = await request(app)
+      .post("/")
+      .send({ jsonrpc: "2.0", id: 9, method: "notAMethod" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(-32601);
+  });
+});
