@@ -166,9 +166,9 @@ impl TransferWithFeeData {
             return Err(ProofGenerationError::NotEnoughFunds);
         }
 
-        // subtract transfer amount from the spendable ciphertext
+        // subtract total cost (transfer amount + fee) from the spendable balance
         let new_spendable_balance = spendable_balance
-            .checked_sub(transfer_amount)
+            .checked_sub(total_cost)
             .ok_or(ProofGenerationError::NotEnoughFunds)?;
 
         // Override the property for unsold crypto: create fresh encryption of the new spendable
