@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Solana Ledger Explorer — real-time block and transaction browser for Apache HTTP hosting" />
+  <title>Solana Ledger Explorer</title>
+  <link rel="stylesheet" href="css/ledger.css" />
+  <!-- Favicon (inline SVG data-URI so no extra file is needed) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%239945ff'/><path d='M8 10h12l-4 4H8zm0 8h12l-4 4H8z' fill='white'/></svg>" />
+</head>
+<body>
+
+<!-- =====================================================
+     Header
+     ===================================================== -->
+<header>
+  <div class="container">
+    <div class="header-inner">
+
+      <!-- Logo -->
+      <a class="logo" href="#">
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="6" fill="#9945ff"/>
+          <path d="M8 10h12l-4 4H8zm0 8h12l-4 4H8z" fill="white"/>
+        </svg>
+        Ledger Explorer
+        <span class="network-badge" id="network-label">mainnet-beta</span>
+      </a>
+
+      <!-- Search -->
+      <div class="search-bar">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search by slot, signature, or address…"
+          aria-label="Search ledger"
+        />
+        <button class="btn btn-primary" id="search-btn" aria-label="Search">
+          <!-- magnifying-glass icon -->
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M12.9 14.32a8 8 0 1 1 1.41-1.41l4.38 4.37-1.41 1.41-4.38-4.37zM8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z"/>
+          </svg>
+          Search
+        </button>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex gap-1 items-center">
+        <select class="network-select" id="network-select" aria-label="Select network"></select>
+        <button class="btn btn-ghost" id="toggle-poll-btn">Pause</button>
+      </div>
+
+    </div>
+  </div>
+</header>
+
+<!-- =====================================================
+     Stats bar
+     ===================================================== -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item">
+        <span class="stat-label"><span class="live-dot" title="Live"></span> Status</span>
+        <span class="stat-value success">Live</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Slot</span>
+        <span class="stat-value accent" id="stat-slot">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Epoch</span>
+        <span class="stat-value" id="stat-epoch">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">TPS</span>
+        <span class="stat-value" id="stat-tps">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Latest Block</span>
+        <span class="stat-value" id="stat-blocktime">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     Main content
+     ===================================================== -->
+<main>
+  <div class="container">
+
+    <!-- ── Inject Transaction Card ─────────────────────── -->
+    <div class="inject-card" id="inject-section">
+      <h2>
+        <!-- terminal icon -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="4 17 10 11 4 5"/>
+          <line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        Background CLI — Inject Transaction into Ledger
+      </h2>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:3">
+          <label for="inject-tx">Signed Transaction (base64 or base58)</label>
+          <textarea
+            id="inject-tx"
+            placeholder="Paste your fully-signed, serialized transaction here…"
+            spellcheck="false"
+          ></textarea>
+        </div>
+        <div class="form-group">
+          <label for="inject-encoding">Encoding</label>
+          <select id="inject-encoding">
+            <option value="base64" selected>base64</option>
+            <option value="base58">base58</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row" style="align-items:center">
+        <label class="flex gap-1 items-center" style="font-size:.875rem;cursor:pointer">
+          <input type="checkbox" id="inject-skip-preflight" />
+          Skip preflight checks
+        </label>
+        <button class="btn btn-primary" id="inject-btn">Inject Transaction</button>
+      </div>
+
+      <div id="inject-result-row" class="flex gap-1 items-center mt-1 hidden">
+        <span class="text-muted" style="font-size:.8rem">Signature:</span>
+        <code id="inject-result" class="mono" style="word-break:break-all;font-size:.8rem"></code>
+        <button class="btn btn-ghost" id="copy-sig-btn" style="padding:.3rem .6rem;font-size:.75rem">
+          Copy
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Tabs: Blocks / Transactions ─────────────────── -->
+    <div class="card">
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" data-tab="blocks" role="tab" aria-selected="true">
+          Recent Blocks
+        </button>
+        <button class="tab-btn" data-tab="txs" role="tab" aria-selected="false">
+          Recent Transactions
+        </button>
+      </div>
+
+      <!-- Blocks tab -->
+      <div id="tab-blocks" class="tab-content active">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Slot</th>
+                <th>Blockhash</th>
+                <th>Transactions</th>
+                <th>Parent Slot</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="blocks-tbody">
+              <!-- skeleton rows inserted by JS -->
+              <tr class="skeleton-row">
+                <td colspan="5" style="padding:2rem;text-align:center;color:var(--text-muted)">
+                  Loading ledger data…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Transactions tab -->
+      <div id="tab-txs" class="tab-content">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Signature</th>
+                <th>Slot</th>
+                <th>Status</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="txs-tbody">
+              <tr class="skeleton-row">
+                <td colspan="4" style="padding:2rem;text-align:center;color:var(--text-muted)">
+                  Loading transactions…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.container -->
+</main>
+
+<!-- =====================================================
+     Detail slide-in panel
+     ===================================================== -->
+<div id="overlay" role="presentation" aria-hidden="true"></div>
+
+<aside id="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+  <div class="detail-header">
+    <span class="detail-title" id="detail-title">Details</span>
+    <button class="close-btn" id="close-detail" aria-label="Close">✕ Close</button>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</aside>
+
+<!-- =====================================================
+     Toast container
+     ===================================================== -->
+<div id="toast-container" role="status" aria-live="polite"></div>
+
+<!-- =====================================================
+     Footer
+     ===================================================== -->
+<footer>
+  <div class="container">
+    Solana Ledger Explorer &mdash; Apache HTTP edition &mdash;
+    Data sourced from the
+    <a href="https://docs.solana.com/api/http" target="_blank" rel="noopener">Solana JSON-RPC API</a>
+  </div>
+</footer>
+
+<script src="js/ledger.js"></script>
+</body>
+</html>
