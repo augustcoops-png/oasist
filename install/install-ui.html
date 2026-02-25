@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Solana Node Installer</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:#0d1117;color:#e6edf3;min-height:100vh;
+       display:flex;flex-direction:column;align-items:center;
+       justify-content:center;padding:1.5rem}
+  h1{font-size:1.4rem;font-weight:700;margin-bottom:.3rem;
+     background:linear-gradient(90deg,#9945ff,#14f195);
+     -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:#8b949e;font-size:.85rem;margin-bottom:1.5rem;text-align:center}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:10px;
+        width:100%;max-width:480px;overflow:hidden}
+  /* platform tabs */
+  .tabs{display:flex;border-bottom:1px solid #30363d}
+  .tab{flex:1;padding:.65rem .3rem;text-align:center;font-size:.8rem;
+       font-weight:600;cursor:pointer;border:none;background:none;
+       color:#8b949e;transition:color .15s,border-color .15s;
+       border-bottom:2px solid transparent}
+  .tab.active{color:#9945ff;border-bottom-color:#9945ff}
+  .tab:hover:not(.active){color:#e6edf3}
+  /* panels */
+  .panel{display:none;padding:1.2rem}
+  .panel.active{display:block}
+  .step{font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;
+        color:#8b949e;font-weight:600;margin-bottom:.5rem}
+  pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;
+      padding:.75rem 1rem;font-size:.82rem;font-family:"SFMono-Regular",
+      Consolas,monospace;overflow-x:auto;color:#e6edf3;
+      white-space:pre-wrap;word-break:break-all;line-height:1.6}
+  .copy-btn{display:block;width:100%;margin-top:.6rem;padding:.5rem;
+            background:#9945ff;color:#fff;border:none;border-radius:6px;
+            font-size:.82rem;font-weight:600;cursor:pointer;
+            transition:opacity .15s}
+  .copy-btn:hover{opacity:.85}
+  .copy-btn.copied{background:#14f195;color:#0d1117}
+  .note{font-size:.75rem;color:#8b949e;margin-top:.8rem;line-height:1.5}
+  .note a{color:#9945ff;text-decoration:none}
+  .note a:hover{text-decoration:underline}
+  footer{margin-top:1.2rem;font-size:.75rem;color:#8b949e;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Solana Node Installer</h1>
+<p class="sub">Pick your platform — copy and run the one-line command.</p>
+
+<div class="card">
+  <div class="tabs" role="tablist">
+    <button class="tab active" onclick="show('linux',this)"   role="tab">Linux</button>
+    <button class="tab"        onclick="show('macos',this)"   role="tab">macOS</button>
+    <button class="tab"        onclick="show('windows',this)" role="tab">Windows</button>
+    <button class="tab"        onclick="show('termux',this)"  role="tab">Termux</button>
+  </div>
+
+  <!-- Linux -->
+  <div id="linux" class="panel active">
+    <p class="step">Run in your terminal</p>
+    <pre id="cmd-linux">bash &lt;(curl -sSfL https://raw.githubusercontent.com/augustcoops-png/oasist/main/install/install-node-linux.sh)</pre>
+    <button class="copy-btn" onclick="copy('cmd-linux',this)">Copy command</button>
+    <p class="note">Supports Debian/Ubuntu, Fedora, Arch, Alpine, openSUSE.<br>
+      Installs: system deps · Node.js · Rust · Solana CLI</p>
+  </div>
+
+  <!-- macOS -->
+  <div id="macos" class="panel">
+    <p class="step">Run in your terminal</p>
+    <pre id="cmd-macos">bash &lt;(curl -sSfL https://raw.githubusercontent.com/augustcoops-png/oasist/main/install/install-node-macos.sh)</pre>
+    <button class="copy-btn" onclick="copy('cmd-macos',this)">Copy command</button>
+    <p class="note">Installs Homebrew if missing, then Node.js (nvm), Rust &amp; Solana CLI.<br>
+      Intel and Apple Silicon (M1/M2/M3) supported.</p>
+  </div>
+
+  <!-- Windows -->
+  <div id="windows" class="panel">
+    <p class="step">Run in PowerShell (Administrator)</p>
+    <pre id="cmd-windows">Set-ExecutionPolicy Bypass -Scope Process -Force; Invoke-Expression ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/augustcoops-png/oasist/main/install/install-node-windows.ps1'))</pre>
+    <button class="copy-btn" onclick="copy('cmd-windows',this)">Copy command</button>
+    <p class="note">Or <a href="install-node-windows.bat" download>download install-node-windows.bat</a>
+      and run as Administrator.<br>
+      Installs: Git · VS Build Tools · LLVM · Node.js · Rust · Solana CLI</p>
+  </div>
+
+  <!-- Termux -->
+  <div id="termux" class="panel">
+    <p class="step">Run inside Termux on Android</p>
+    <pre id="cmd-termux">curl -sSfL https://raw.githubusercontent.com/augustcoops-png/oasist/main/install/install-node-termux.sh | bash</pre>
+    <button class="copy-btn" onclick="copy('cmd-termux',this)">Copy command</button>
+    <p class="note">Opens Termux &rarr; paste &rarr; press Enter.<br>
+      Installs: Termux packages · Node.js · Rust · Solana CLI</p>
+  </div>
+</div>
+
+<footer>v2.0.0 &mdash; <a href="https://github.com/augustcoops-png/oasist" style="color:#9945ff">augustcoops-png/oasist</a></footer>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+function copy(id, btn) {
+  var text = document.getElementById(id).textContent
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function(){ btn.textContent='Copy command'; btn.classList.remove('copied'); }, 2000);
+    });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent='Copy command'; btn.classList.remove('copied'); }, 2000);
+  }
+}
+</script>
+</body>
+</html>
