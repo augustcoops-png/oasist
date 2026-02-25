@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# All-in-one Solana node installer for Linux
+# All-in-one Solana node installer for macOS
 #
 # Usage:
-#   bash install-node-linux.sh [--update]
+#   bash install-node-macos.sh [--update]
 #
-# Installs Rust, required system packages, Node.js, and the Solana tool suite.
-# Supports: Debian/Ubuntu (apt), Fedora/RHEL (dnf), CentOS/RHEL 7 (yum),
-#           openSUSE (zypper), Arch Linux (pacman), Alpine Linux (apk)
+# Installs Homebrew (if missing), system dependencies, Node.js, Rust,
+# and the Solana tool suite.
+# Supports: Intel (x86_64) and Apple Silicon (arm64 / M1/M2/M3).
 
 set -euo pipefail
 
 INSTALLER_VERSION="2.0.0"
 SOLANA_INSTALL_INIT_URL="https://release.solana.com/stable/install"
-# Minimum Node.js major version for web3.js / tooling
 NODE_MIN_VERSION=18
 UPDATE_MODE=false
 
@@ -29,12 +28,12 @@ err() {
     exit 1
 }
 
-need_cmd() {
-    command -v "$1" > /dev/null 2>&1 || err "Required command not found: $1"
-}
-
 check_cmd() {
     command -v "$1" > /dev/null 2>&1
+}
+
+need_cmd() {
+    check_cmd "$1" || err "Required command not found: $1"
 }
 
 for arg in "$@"; do
@@ -44,77 +43,69 @@ for arg in "$@"; do
 done
 
 # ---------------------------------------------------------------------------
-# 1. Detect package manager and install system dependencies
+# Verify we are on macOS
 # ---------------------------------------------------------------------------
-install_system_deps() {
-    info "Installing system dependencies..."
+check_macos() {
+    [ "$(uname -s)" = "Darwin" ] || err "This script is for macOS only."
 
     local arch
     arch="$(uname -m)"
-    info "Architecture: $arch"
+    info "macOS $(sw_vers -productVersion) on $arch"
 
-    if check_cmd apt-get; then
-        sudo apt-get update -y
-        sudo apt-get install -y \
-            curl wget git build-essential \
-            libssl-dev libudev-dev pkg-config \
-            zlib1g-dev llvm clang cmake make \
-            libprotobuf-dev protobuf-compiler \
-            ca-certificates gnupg lsb-release
-
-    elif check_cmd dnf; then
-        sudo dnf install -y \
-            curl wget git gcc gcc-c++ make \
-            openssl-devel systemd-devel pkg-config \
-            zlib-devel llvm clang cmake \
-            protobuf-devel protobuf-compiler perl-core \
-            ca-certificates
-
-    elif check_cmd yum; then
-        # CentOS / RHEL 7
-        sudo yum groupinstall -y "Development Tools"
-        sudo yum install -y \
-            curl wget git \
-            openssl-devel systemd-devel pkgconfig \
-            zlib-devel llvm clang cmake \
-            ca-certificates
-
-    elif check_cmd zypper; then
-        # openSUSE / SUSE
-        sudo zypper --non-interactive install \
-            curl wget git gcc gcc-c++ make \
-            libopenssl-devel systemd-devel pkg-config \
-            zlib-devel llvm clang cmake \
-            protobuf-devel ca-certificates
-
-    elif check_cmd pacman; then
-        # Arch Linux
-        sudo pacman -Sy --noconfirm \
-            curl wget git base-devel \
-            openssl libudev0 pkgconf \
-            zlib llvm clang cmake \
-            protobuf ca-certificates
-
-    elif check_cmd apk; then
-        # Alpine Linux
-        sudo apk add --no-cache \
-            curl wget git build-base \
-            openssl-dev linux-headers pkgconf \
-            zlib-dev llvm clang cmake make \
-            protobuf-dev ca-certificates
-
+    if [ "$arch" = "arm64" ]; then
+        info "Apple Silicon (arm64) detected."
+        # Ensure Homebrew is evaluated from /opt/homebrew on Apple Silicon
+        if [ -f /opt/homebrew/bin/brew ]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
     else
-        warn "Unrecognised package manager — skipping system dependency install."
-        warn "Please install manually: curl git build-essential libssl-dev libudev-dev"
-        warn "pkg-config zlib1g-dev llvm clang cmake make libprotobuf-dev protobuf-compiler"
+        info "Intel (x86_64) detected."
     fi
 }
 
 # ---------------------------------------------------------------------------
-# 2. Install Node.js (for Solana web3.js tooling and the web ledger)
+# 1. Install / update Homebrew
+# ---------------------------------------------------------------------------
+install_homebrew() {
+    if check_cmd brew; then
+        info "Homebrew already installed — updating..."
+        brew update
+    else
+        info "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+        # Add brew to PATH for this session (Apple Silicon path)
+        if [ -f /opt/homebrew/bin/brew ]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 2. Install system dependencies via Homebrew
+# ---------------------------------------------------------------------------
+install_system_deps() {
+    info "Installing system dependencies via Homebrew..."
+
+    brew install \
+        curl wget git \
+        openssl@3 pkg-config \
+        llvm clang-format cmake make \
+        protobuf
+
+    # Ensure openssl is on the path for compilation
+    local ossl_prefix
+    ossl_prefix="$(brew --prefix openssl@3)"
+    export OPENSSL_DIR="$ossl_prefix"
+    export OPENSSL_ROOT_DIR="$ossl_prefix"
+
+    info "System dependencies installed."
+}
+
+# ---------------------------------------------------------------------------
+# 3. Install Node.js via nvm (version-managed, avoids Homebrew conflicts)
 # ---------------------------------------------------------------------------
 install_nodejs() {
-    # Always install/update Node.js via nvm — never skip
     if check_cmd node; then
         local current_major
         current_major="$(node --version | sed 's/v//' | cut -d. -f1)"
@@ -126,21 +117,23 @@ install_nodejs() {
     fi
 
     info "Installing Node.js v${NODE_MIN_VERSION} via nvm..."
-    if ! check_cmd nvm; then
+
+    export NVM_DIR="$HOME/.nvm"
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-        # shellcheck source=/dev/null
-        export NVM_DIR="$HOME/.nvm"
-        # shellcheck source=/dev/null
-        [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
     fi
+    # shellcheck source=/dev/null
+    source "$NVM_DIR/nvm.sh"
+
     nvm install "${NODE_MIN_VERSION}" --lts
     nvm use "${NODE_MIN_VERSION}"
     nvm alias default "${NODE_MIN_VERSION}"
+
     info "Node.js $(node --version) installed."
 }
 
 # ---------------------------------------------------------------------------
-# 3. Install Rust via rustup
+# 4. Install Rust via rustup
 # ---------------------------------------------------------------------------
 install_rust() {
     if check_cmd rustup; then
@@ -156,12 +149,12 @@ install_rust() {
     source "$HOME/.cargo/env"
 
     rustup component add rustfmt
-    info "Rust: $(rustc --version)"
+    info "Rust:  $(rustc --version)"
     info "Cargo: $(cargo --version)"
 }
 
 # ---------------------------------------------------------------------------
-# 4. Install / update the Solana tool suite
+# 5. Install / update the Solana tool suite
 # ---------------------------------------------------------------------------
 install_solana() {
     if $UPDATE_MODE && check_cmd solana; then
@@ -172,12 +165,11 @@ install_solana() {
         sh -c "$(curl -sSfL "$SOLANA_INSTALL_INIT_URL")"
     fi
 
-    # Persist the PATH update for future shells
     local shell_rc=""
     if [ -n "${ZSH_VERSION:-}" ] || [ "$(basename "${SHELL:-sh}")" = "zsh" ]; then
         shell_rc="$HOME/.zshrc"
     else
-        shell_rc="$HOME/.bashrc"
+        shell_rc="$HOME/.bash_profile"
     fi
 
     if ! grep -q 'solana/install/active_release' "$shell_rc" 2>/dev/null; then
@@ -193,43 +185,29 @@ install_solana() {
 }
 
 # ---------------------------------------------------------------------------
-# 5. Post-install verification
+# 6. Post-install verification
 # ---------------------------------------------------------------------------
 verify_install() {
     info "Verifying installation..."
     local all_ok=true
 
-    if check_cmd solana; then
-        info "  solana CLI  : $(solana --version)"
-    else
-        warn "  solana CLI  : NOT FOUND in PATH"
-        all_ok=false
-    fi
-
-    if check_cmd solana-keygen; then
-        info "  solana-keygen: $(solana-keygen --version)"
-    else
-        warn "  solana-keygen: NOT FOUND in PATH"
-        all_ok=false
-    fi
-
-    if check_cmd rustc; then
-        info "  rustc       : $(rustc --version)"
-    else
-        warn "  rustc       : NOT FOUND in PATH"
-        all_ok=false
-    fi
+    for tool in solana solana-keygen rustc; do
+        if check_cmd "$tool"; then
+            info "  ${tool}: $($tool --version 2>&1 | head -1)"
+        else
+            warn "  ${tool}: NOT FOUND — restart your terminal"
+            all_ok=false
+        fi
+    done
 
     if check_cmd node; then
-        info "  node        : $(node --version)"
-    else
-        warn "  node        : NOT FOUND (optional)"
+        info "  node: $(node --version)"
     fi
 
     if $all_ok; then
         info "All required tools verified successfully."
     else
-        warn "Some tools were not found. You may need to restart your terminal."
+        warn "Some tools not found. Run: source \$HOME/.cargo/env && restart terminal."
     fi
 }
 
@@ -238,13 +216,14 @@ verify_install() {
 # ---------------------------------------------------------------------------
 main() {
     need_cmd curl
-    need_cmd uname
+    check_macos
 
-    info "=== Solana Node — Linux Installer v${INSTALLER_VERSION} ==="
+    info "=== Solana Node — macOS Installer v${INSTALLER_VERSION} ==="
     if $UPDATE_MODE; then
         info "Mode: UPDATE existing installation"
     fi
 
+    install_homebrew
     install_system_deps
     install_nodejs
     install_rust
@@ -257,10 +236,10 @@ main() {
     info "  export PATH=\"\$HOME/.local/share/solana/install/active_release/bin:\$PATH\""
     info ""
     info "Quick-start commands:"
-    info "  solana --version          # verify CLI"
-    info "  solana-keygen new         # generate a keypair"
-    info "  solana config set --url devnet  # point at devnet"
-    info "  solana balance            # check SOL balance"
+    info "  solana --version               # verify CLI"
+    info "  solana-keygen new              # generate a keypair"
+    info "  solana config set --url devnet # point at devnet"
+    info "  solana balance                 # check SOL balance"
 }
 
 main "$@"

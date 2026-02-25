@@ -1,26 +1,31 @@
 @echo off
 :: All-in-one Solana node installer for Windows
+:: Version 2.0.0
 ::
 :: Usage:
-::   Double-click install-node-windows.bat, or run it from an Administrator
-::   Command Prompt / PowerShell session.
+::   Run from an Administrator Command Prompt, or double-click.
+::   For a better experience use install-node-windows.ps1 in PowerShell.
 ::
 :: What this script does:
-::   1. Checks that winget (Windows Package Manager) is available.
-::   2. Installs Git, Visual Studio Build Tools, and LLVM/Clang via winget.
-::   3. Installs Rust via rustup-init.exe (downloads from rustup.rs).
-::   4. Installs the Solana tool suite via the official PowerShell installer.
+::   1. Verifies winget is available.
+::   2. Installs Git, VS Build Tools (C++ workload), LLVM/Clang, and Node.js via winget.
+::   3. Installs Rust via rustup-init.exe.
+::   4. Installs the Solana tool suite via the official Windows installer binary.
+::   5. Verifies installed tool versions.
 
 setlocal enabledelayedexpansion
 
+set "INSTALLER_VERSION=2.0.0"
+set "SOLANA_INSTALLER_URL=https://release.solana.com/stable/solana-install-init-x86_64-pc-windows-msvc.exe"
+
 echo.
 echo ============================================================
-echo  Solana Node -- Windows Installer
+echo  Solana Node -- Windows Installer v%INSTALLER_VERSION%
 echo ============================================================
 echo.
 
 :: ---------------------------------------------------------------------------
-:: Ensure we have an internet connection by pinging a known host
+:: Check for internet connectivity
 :: ---------------------------------------------------------------------------
 ping -n 1 8.8.8.8 >nul 2>&1
 if errorlevel 1 (
@@ -32,93 +37,132 @@ if errorlevel 1 (
 :: ---------------------------------------------------------------------------
 :: 1. Install system dependencies via winget
 :: ---------------------------------------------------------------------------
-echo [1/4] Checking for winget...
+echo [1/5] Checking for winget (Windows Package Manager)...
 winget --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] winget ^(Windows Package Manager^) is not available on this system.
-    echo         Please install it from the Microsoft Store or update Windows, then
-    echo         re-run this script.
+    echo [ERROR] winget is not available on this system.
+    echo         Install it from the Microsoft Store ^(App Installer^) or
+    echo         update Windows, then re-run this script.
+    echo         Alternatively, run install-node-windows.ps1 in PowerShell.
     pause
     exit /b 1
 )
+echo        winget found.
 
-echo [1/4] Installing Git for Windows...
-winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements
+echo [1/5] Installing Git for Windows...
+winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements
 
-echo [1/4] Installing Visual Studio Build Tools (C++ workload)...
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e ^
+echo [1/5] Installing Visual Studio 2022 Build Tools (C++ workload)...
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --silent ^
     --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" ^
     --accept-source-agreements --accept-package-agreements
 
-echo [1/4] Installing LLVM / Clang...
-winget install --id LLVM.LLVM -e --accept-source-agreements --accept-package-agreements
+echo [1/5] Installing LLVM / Clang...
+winget install --id LLVM.LLVM -e --silent --accept-source-agreements --accept-package-agreements
+
+echo [1/5] Installing Node.js LTS...
+winget install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements
+
+:: Refresh PATH in this session to pick up newly installed tools
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\"PATH\",\"Machine\") + \";\" + [Environment]::GetEnvironmentVariable(\"PATH\",\"User\")"') do set "PATH=%%i"
 
 :: ---------------------------------------------------------------------------
 :: 2. Install Rust via rustup
 :: ---------------------------------------------------------------------------
 echo.
-echo [2/4] Installing Rust via rustup...
+echo [2/5] Installing Rust via rustup...
 
 where rustup >nul 2>&1
 if not errorlevel 1 (
-    echo         rustup is already installed -- updating...
+    echo        rustup already installed -- updating stable toolchain...
     rustup update stable
 ) else (
-    :: Download rustup-init.exe to a temp file and run it silently
     set "RUSTUP_INIT=%TEMP%\rustup-init.exe"
-    powershell -Command ^
-        "Invoke-WebRequest -Uri 'https://win.rustup.rs/x86_64' -OutFile '%RUSTUP_INIT%'"
-    "%RUSTUP_INIT%" -y --default-toolchain stable
-    del "%RUSTUP_INIT%"
+    echo        Downloading rustup-init.exe...
+    powershell -NoProfile -Command ^
+        "Invoke-WebRequest -Uri 'https://win.rustup.rs/x86_64' -OutFile '!RUSTUP_INIT!' -UseBasicParsing"
+    "!RUSTUP_INIT!" -y --default-toolchain stable --no-modify-path
+    del "!RUSTUP_INIT!"
 )
 
-:: Reload PATH so cargo/rustup are visible in this session
+:: Add cargo bin to PATH for this session
 set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
 rustup component add rustfmt
 
-echo         Rust version:
+echo        Rust version:
 rustc --version
 
 :: ---------------------------------------------------------------------------
-:: 3. Install the Solana tool suite via PowerShell
+:: 3. Install the Solana tool suite
 :: ---------------------------------------------------------------------------
 echo.
-echo [3/4] Installing Solana tool suite...
+echo [3/5] Installing Solana tool suite...
 
-powershell -Command ^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
-    "Invoke-WebRequest -Uri 'https://release.solana.com/stable/install' -OutFile '%TEMP%\solana-install-init.ps1'; " ^
-    "& '%TEMP%\solana-install-init.ps1'"
+set "SOLANA_INIT=%TEMP%\solana-install-init.exe"
+powershell -NoProfile -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; " ^
+    "Invoke-WebRequest -Uri '%SOLANA_INSTALLER_URL%' -OutFile '%SOLANA_INIT%' -UseBasicParsing"
+
+if not exist "%SOLANA_INIT%" (
+    echo [ERROR] Failed to download Solana installer.
+    pause
+    exit /b 1
+)
+
+"%SOLANA_INIT%"
+del "%SOLANA_INIT%"
 
 :: ---------------------------------------------------------------------------
-:: 4. Verify and display next steps
+:: 4. Persist PATH and verify
 :: ---------------------------------------------------------------------------
 echo.
-echo [4/4] Verifying installation...
+echo [4/5] Updating system PATH...
+
 set "SOLANA_BIN=%USERPROFILE%\.local\share\solana\install\active_release\bin"
 set "PATH=%SOLANA_BIN%;%PATH%"
 
+:: Persist the Solana bin dir in the user PATH via PowerShell
+powershell -NoProfile -Command ^
+    "$p=[Environment]::GetEnvironmentVariable('PATH','User'); " ^
+    "if ($p -notlike '*solana*') { " ^
+    "  [Environment]::SetEnvironmentVariable('PATH', \"%SOLANA_BIN%;$p\", 'User') " ^
+    "}"
+
+:: ---------------------------------------------------------------------------
+:: 5. Verification
+:: ---------------------------------------------------------------------------
+echo.
+echo [5/5] Verifying installations...
+
 solana --version 2>nul
 if errorlevel 1 (
-    echo [WARN] solana binary not found in PATH after install.
-    echo        You may need to restart your terminal/Command Prompt.
+    echo [WARN] solana not found in PATH -- you may need to restart your terminal.
+) else (
+    echo        solana OK
 )
+
+rustc --version 2>nul && echo        rustc OK
+
+node --version 2>nul
+if not errorlevel 1 ( echo        node OK )
 
 echo.
 echo ============================================================
-echo  Installation complete!
+echo  Installation complete!  v%INSTALLER_VERSION%
 echo ============================================================
 echo.
-echo  To make Solana available in every new terminal session,
-echo  add the following directory to your system PATH:
+echo  Solana binaries are at: %SOLANA_BIN%
 echo.
-echo    %SOLANA_BIN%
+echo  If solana is not found, restart your terminal/Command Prompt,
+echo  or add the path above to your System / User PATH manually:
+echo    Settings -^> System -^> About -^> Advanced System Settings
+echo    -^> Environment Variables -^> Path -^> Edit
 echo.
-echo  You can do this via:
-echo    System Properties -^> Environment Variables -^> Path -^> Edit
-echo.
-echo  Then verify the install by running:
+echo  Quick-start:
 echo    solana --version
+echo    solana-keygen new
+echo    solana config set --url devnet
+echo    solana balance
 echo.
 pause
 endlocal
