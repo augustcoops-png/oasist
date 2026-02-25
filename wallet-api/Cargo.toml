@@ -1,0 +1,24 @@
+[package]
+name = "oasist-wallet-api"
+description = "OASIST Wallet API — HTTP server for UI-driven and external wallet generation"
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+dirs-next = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+solana-sdk = { workspace = true }
+tiny-bip39 = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[[bin]]
+name = "oasist-wallet-api"
+path = "src/main.rs"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
