@@ -25,3 +25,4 @@
 
 pub mod binance;
 pub mod marketplace;
+pub mod stats;
