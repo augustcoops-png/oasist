@@ -1,11 +1,15 @@
-//! OASIST Wallet API — HTTP server for UI-driven and external wallet generation.
+//! OASIST Wallet API — HTTP server for local UI-driven wallet generation.
+//!
+//! The server binds to 127.0.0.1 ONLY — it is not reachable from any external
+//! network interface.  All cross-origin and external webhook requests are
+//! rejected with 403 Forbidden.
 //!
 //! Endpoints:
 //!   GET  /                          — HTML wallet-generation UI
-//!   POST /api/generate-wallet       — JSON wallet generation
+//!   POST /api/generate-wallet       — JSON wallet generation (localhost only)
 //!        ?words=12|15|18|21|24      — (optional) mnemonic word count, default 12
 //!
-//! Default listen address: 0.0.0.0:9899
+//! Default listen address: 127.0.0.1:9899
 //! Override with --port <PORT>
 
 use {
@@ -225,25 +229,47 @@ fn generate_wallet(words: usize) -> Result<WalletResult, String> {
 
 // ── HTTP handler ─────────────────────────────────────────────────────────────
 
-async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    match (_req.method(), _req.uri().path()) {
+/// Returns true when the Host header points to localhost / 127.0.0.1.
+/// Requests from any other origin (external webhooks, remote callers) are
+/// rejected before any processing takes place.
+fn is_localhost(req: &Request<Body>) -> bool {
+    req.headers()
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(|host| {
+            // strip optional port suffix
+            let host = host.split(':').next().unwrap_or(host);
+            host == "localhost" || host == "127.0.0.1"
+        })
+        .unwrap_or(false)
+}
+
+fn forbidden() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body(Body::from("403 Forbidden: external access is not permitted"))
+        .unwrap()
+}
+
+async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    // Reject every request that does not come from localhost.
+    // This prevents webhooks, remote API calls, and cross-origin browser
+    // requests from triggering wallet generation.
+    if !is_localhost(&req) {
+        return Ok(forbidden());
+    }
+
+    match (req.method(), req.uri().path()) {
         // UI
         (&Method::GET, "/") | (&Method::GET, "/index.html") => Ok(Response::builder()
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .body(Body::from(UI_HTML))
             .unwrap()),
 
-        // CORS preflight
-        (&Method::OPTIONS, "/api/generate-wallet") => Ok(Response::builder()
-            .header("Access-Control-Allow-Origin", "*")
-            .header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            .header("Access-Control-Allow-Headers", "Content-Type")
-            .body(Body::empty())
-            .unwrap()),
-
-        // Wallet generation API
+        // Wallet generation API — no CORS headers intentionally
         (&Method::POST, "/api/generate-wallet") => {
-            let words: usize = _req
+            let words: usize = req
                 .uri()
                 .query()
                 .and_then(|q| {
@@ -264,7 +290,6 @@ async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
                     });
                     Ok(Response::builder()
                         .header(header::CONTENT_TYPE, "application/json")
-                        .header("Access-Control-Allow-Origin", "*")
                         .body(Body::from(body.to_string()))
                         .unwrap())
                 }
@@ -273,7 +298,6 @@ async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
                     Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .header(header::CONTENT_TYPE, "application/json")
-                        .header("Access-Control-Allow-Origin", "*")
                         .body(Body::from(body.to_string()))
                         .unwrap())
                 }
@@ -298,16 +322,17 @@ async fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(9899);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let make_svc =
         make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle)) });
 
     let server = Server::bind(&addr).serve(make_svc);
 
-    println!("OASIST Wallet API listening on http://0.0.0.0:{port}");
+    println!("OASIST Wallet API listening on http://127.0.0.1:{port} (localhost only)");
     println!("  UI:  http://localhost:{port}/");
     println!("  API: POST http://localhost:{port}/api/generate-wallet?words=12");
+    println!("  External access is disabled — webhook requests will be rejected.");
 
     if let Err(e) = server.await {
         eprintln!("server error: {e}");
@@ -346,5 +371,46 @@ mod tests {
         let a = generate_wallet(12).unwrap().address;
         let b = generate_wallet(12).unwrap().address;
         assert_ne!(a, b, "each wallet must have a unique address");
+    }
+
+    // ── localhost guard ──────────────────────────────────────────────────────
+
+    fn req_with_host(host: &str) -> Request<Body> {
+        Request::builder()
+            .method(Method::POST)
+            .uri("/api/generate-wallet")
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    #[test]
+    fn test_is_localhost_accepts_localhost() {
+        assert!(is_localhost(&req_with_host("localhost")));
+        assert!(is_localhost(&req_with_host("localhost:9899")));
+    }
+
+    #[test]
+    fn test_is_localhost_accepts_127_0_0_1() {
+        assert!(is_localhost(&req_with_host("127.0.0.1")));
+        assert!(is_localhost(&req_with_host("127.0.0.1:9899")));
+    }
+
+    #[test]
+    fn test_is_localhost_rejects_external_hosts() {
+        assert!(!is_localhost(&req_with_host("example.com")));
+        assert!(!is_localhost(&req_with_host("attacker.io")));
+        assert!(!is_localhost(&req_with_host("192.168.1.5")));
+        assert!(!is_localhost(&req_with_host("0.0.0.0")));
+    }
+
+    #[test]
+    fn test_is_localhost_rejects_missing_host() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/generate-wallet")
+            .body(Body::empty())
+            .unwrap();
+        assert!(!is_localhost(&req));
     }
 }
