@@ -30,6 +30,10 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
       - name: Run tests
         working-directory: backend
         run: npm test

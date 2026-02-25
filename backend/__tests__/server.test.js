@@ -54,6 +54,42 @@ describe("GET /health", () => {
   });
 });
 
+// ─── GET /methods ─────────────────────────────────────────────────────────────
+describe("GET /methods", () => {
+  const app = buildApp();
+
+  it("returns 200 with JSON content-type", async () => {
+    const res = await request(app).get("/methods");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+  });
+
+  it("returns an object with a methods array of all 52 methods", async () => {
+    const res = await request(app).get("/methods");
+    expect(Array.isArray(res.body.methods)).toBe(true);
+    expect(res.body.methods.length).toBe(52);
+  });
+
+  it("returns methods in alphabetical order", async () => {
+    const res = await request(app).get("/methods");
+    const methods = res.body.methods;
+    const sorted = [...methods].sort();
+    expect(methods).toEqual(sorted);
+  });
+
+  it("includes known methods", async () => {
+    const res = await request(app).get("/methods");
+    expect(res.body.methods).toContain("getBalance");
+    expect(res.body.methods).toContain("sendTransaction");
+    expect(res.body.methods).toContain("getSlot");
+  });
+
+  it("sets CORS header", async () => {
+    const res = await request(app).get("/methods");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+  });
+});
+
 // ─── POST / single request ────────────────────────────────────────────────────
 describe("POST / (single request)", () => {
   // Port 19999 is intentionally unreachable so proxy tests don't hit the network.

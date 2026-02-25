@@ -2,6 +2,7 @@
 
 const path = require("path");
 const express = require("express");
+const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 
 const SPEC_PATH = path.resolve(__dirname, "../docs/static/openapi.json");
@@ -26,6 +27,11 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
 
   // Parse incoming JSON bodies.
   app.use(express.json());
+
+  // Structured request logging (skip in test env to keep test output clean).
+  if (process.env.NODE_ENV !== "test") {
+    app.use(morgan("combined"));
+  }
 
   // CORS — allow any origin to call this API (mirrors what public RPC nodes do).
   app.use((_req, res, next) => {
@@ -53,6 +59,15 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
    */
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  /**
+   * GET /methods
+   * Discovery endpoint — returns an alphabetically sorted array of every
+   * Solana JSON-RPC method recognised by this proxy.
+   */
+  app.get("/methods", (_req, res) => {
+    res.json({ methods: [...KNOWN_METHODS].sort() });
   });
 
   /**
@@ -175,11 +190,29 @@ function buildApp(rpcUrl = DEFAULT_RPC_URL) {
 // Start the server only when this file is run directly (not when it is required by tests).
 if (require.main === module) {
   const app = buildApp();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`oasist backend listening on http://localhost:${PORT}`);
     console.log(`  OpenAPI spec : http://localhost:${PORT}/openapi.json`);
+    console.log(`  Methods list : http://localhost:${PORT}/methods`);
     console.log(`  RPC proxy    : POST http://localhost:${PORT}/  →  ${DEFAULT_RPC_URL}`);
   });
+
+  // Graceful shutdown — finish in-flight requests before exiting.
+  function shutdown(signal) {
+    console.log(`\nReceived ${signal}. Shutting down gracefully…`);
+    server.close(() => {
+      console.log("Server closed.");
+      process.exit(0);
+    });
+    // Force-exit if draining takes too long.
+    setTimeout(() => {
+      console.error("Forced exit after timeout.");
+      process.exit(1);
+    }, 10_000).unref();
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 module.exports = { buildApp };

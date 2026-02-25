@@ -6,6 +6,9 @@ A Node.js/Express backend that:
 2. **Proxies RPC requests** – `POST /` forwards JSON-RPC 2.0 requests (single *or* batch) to the configured Solana cluster and returns the response.
 3. **Validates methods** – unknown method names are rejected with a `-32601 Method not found` error before any network call is made.
 4. **Health probe** – `GET /health` is always available for load-balancer liveness checks.
+5. **Method discovery** – `GET /methods` returns a sorted list of every supported RPC method.
+6. **Request logging** – structured `combined` format logs via `morgan` (disabled during testing).
+7. **Graceful shutdown** – handles `SIGTERM`/`SIGINT` to drain in-flight requests before exiting.
 
 ## Requirements
 
@@ -41,6 +44,16 @@ PORT=8080 SOLANA_RPC_URL=https://api.devnet.solana.com npm start
 
 Liveness probe. Always returns `200 {"status":"ok"}` while the server is running.
 
+### `GET /methods`
+
+Discovery endpoint. Returns an alphabetically sorted list of all 52 supported Solana JSON-RPC method names.
+
+```json
+{
+  "methods": ["getAccountInfo", "getBalance", "getBlock", "..."]
+}
+```
+
 ### `GET /openapi.json`
 
 Returns the OpenAPI 3.0.3 specification for the Solana JSON-RPC API.
@@ -75,7 +88,16 @@ Unknown method names are rejected locally with `-32601` before the request is fo
 npm test
 ```
 
+## Linting
+
+```bash
+npm run lint        # check
+npm run lint:fix    # auto-fix
+```
+
 ## Docker
+
+### Single container
 
 ```bash
 # Build
@@ -89,4 +111,19 @@ docker run -p 8080:8080 \
   -e PORT=8080 \
   -e SOLANA_RPC_URL=https://api.devnet.solana.com \
   oasist-backend
+```
+
+### Docker Compose (recommended for local development)
+
+```bash
+cd backend
+
+# Start (defaults: mainnet-beta, port 3000)
+docker compose up
+
+# Start with overrides
+PORT=8080 SOLANA_RPC_URL=https://api.devnet.solana.com docker compose up
+
+# Stop
+docker compose down
 ```
