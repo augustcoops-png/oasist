@@ -6373,6 +6373,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-market"
+version = "2.0.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "solana-measure"
 version = "2.0.0"
 dependencies = [
