@@ -1088,11 +1088,12 @@ pub fn set_rotation_fee<S: std::hash::BuildHasher>(
 }
 
 /// Withdraw funds from the vote account.
-/// When `rotation_signers` is configured, a 2% live validation and signing fee
-/// (`VALIDATION_FEE_BPS` basis points) is deducted from the requested amount and
-/// split equally among the first two rotation signers.  Their writable accounts
-/// must be supplied as additional instruction accounts after the recipient, at
-/// indexes 2 and 3 respectively.
+/// The recipient always receives the full requested `lamports`.
+/// When `rotation_signers` are configured, the vote account also pays an additional
+/// 0.5% (`VALIDATION_FEE_PER_SIGNER_BPS` basis points) per signer (up to the first two)
+/// directly to each signer's account, on top of the requested amount.
+/// The signer accounts must be supplied as writable instruction accounts after the
+/// recipient, at indexes 2 and 3 respectively.
 pub fn withdraw<S: std::hash::BuildHasher>(
     transaction_context: &TransactionContext,
     instruction_context: &InstructionContext,
@@ -1112,9 +1113,31 @@ pub fn withdraw<S: std::hash::BuildHasher>(
 
     verify_authorized_signer(&vote_state.authorized_withdrawer, signers)?;
 
+    // Compute the per-signer fee (0.5% of the withdrawal each, additional on top).
+    let fee_recipients: Vec<Pubkey> = vote_state
+        .rotation_signers
+        .iter()
+        .take(2)
+        .copied()
+        .collect();
+    let fee_per_signer = if fee_recipients.is_empty() {
+        0u64
+    } else {
+        // floor(lamports * VALIDATION_FEE_PER_SIGNER_BPS / 10_000)
+        lamports
+            .saturating_mul(VALIDATION_FEE_PER_SIGNER_BPS)
+            .checked_div(10_000)
+            .unwrap_or(0)
+    };
+    let total_fees: u64 = fee_per_signer.saturating_mul(fee_recipients.len() as u64);
+
+    // The vote account must cover the full withdrawal plus all signer fees.
+    let total_debit = lamports
+        .checked_add(total_fees)
+        .ok_or(InstructionError::InsufficientFunds)?;
     let remaining_balance = vote_account
         .get_lamports()
-        .checked_sub(lamports)
+        .checked_sub(total_debit)
         .ok_or(InstructionError::InsufficientFunds)?;
 
     if remaining_balance == 0 {
@@ -1145,55 +1168,26 @@ pub fn withdraw<S: std::hash::BuildHasher>(
         }
     }
 
-    vote_account.checked_sub_lamports(lamports)?;
+    // Deduct the full amount (withdrawal + fees) from the vote account.
+    vote_account.checked_sub_lamports(total_debit)?;
     drop(vote_account);
 
-    // Calculate the 2% validation and signing fee to be distributed among up to
-    // the first two rotation signers, when any are configured.
-    let fee_recipients: Vec<Pubkey> = vote_state
-        .rotation_signers
-        .iter()
-        .take(2)
-        .copied()
-        .collect();
-    let num_fee_recipients = fee_recipients.len() as u64;
-
-    let (to_lamports, total_fee) = if num_fee_recipients > 0 {
-        // fee = floor(lamports * VALIDATION_FEE_BPS / 10_000)
-        let total_fee = lamports
-            .saturating_mul(VALIDATION_FEE_BPS)
-            .checked_div(10_000)
-            .unwrap_or(0);
-        let net = lamports.saturating_sub(total_fee);
-        (net, total_fee)
-    } else {
-        (lamports, 0)
-    };
-
-    // Credit the net amount to the requested recipient
+    // Credit the full requested amount to the recipient.
     let mut to_account = instruction_context
         .try_borrow_instruction_account(transaction_context, to_account_index)?;
-    to_account.checked_add_lamports(to_lamports)?;
+    to_account.checked_add_lamports(lamports)?;
     drop(to_account);
 
-    // Distribute the fee equally among up to 2 rotation signers
-    if total_fee > 0 {
-        // fee_per_signer = floor(total_fee / num_fee_recipients);
-        // any rounding remainder goes to the first signer.
-        let fee_per_signer = total_fee / num_fee_recipients;
-        let remainder = total_fee % num_fee_recipients;
-        // Accounts for fee recipients are at instruction indexes 2..4
+    // Credit 0.5% to each rotation signer (accounts at instruction indexes 2 and 3).
+    if fee_per_signer > 0 {
         for (i, _) in fee_recipients.iter().enumerate() {
-            let extra = if i == 0 { remainder } else { 0 };
-            let fee = fee_per_signer + extra;
-            let fee_account_index = (to_account_index + 1 + i as IndexOfAccount) as IndexOfAccount;
+            let fee_account_index =
+                (to_account_index + 1 + i as IndexOfAccount) as IndexOfAccount;
             if fee_account_index < instruction_context.get_number_of_instruction_accounts() {
                 let mut fee_account = instruction_context
                     .try_borrow_instruction_account(transaction_context, fee_account_index)?;
-                fee_account.checked_add_lamports(fee)?;
+                fee_account.checked_add_lamports(fee_per_signer)?;
             }
-            // If the account is not provided, the fee is silently skipped (remains in the
-            // lamports already deducted from vote_account).
         }
     }
 

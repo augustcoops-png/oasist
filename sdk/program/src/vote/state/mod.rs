@@ -47,10 +47,10 @@ pub const VOTE_CREDITS_GRACE_SLOTS: u8 = 2;
 /// Maximum number of authorized rotation signers per vote account.
 pub const MAX_ROTATION_SIGNERS: usize = 10;
 
-/// Validation and signing fee in basis points (200 bps = 2%).
-/// When rotation_signers are configured, this share of every withdrawal
-/// is split equally among the first two rotation signers.
-pub const VALIDATION_FEE_BPS: u64 = 200;
+/// Validation and signing fee per signer in basis points (50 bps = 0.5%).
+/// Each of the first two rotation signers receives this share of every withdrawal
+/// as an additional charge on top of the requested amount.
+pub const VALIDATION_FEE_PER_SIGNER_BPS: u64 = 50;
 
 // Maximum number of credits to award for a vote; this number of credits is awarded to votes on slots that land within the grace period. After that grace period, vote credits are reduced.
 pub const VOTE_CREDITS_MAXIMUM_PER_SLOT: u8 = 16;

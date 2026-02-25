@@ -954,12 +954,17 @@ mod tests {
 
     #[test]
     fn test_withdraw_validation_fee_split_to_signers() {
-        // Set up a vote account that uses the rent-exempt reserve plus an extra
-        // amount we will withdraw, so the account stays rent-exempt after the withdrawal.
+        // Set up a vote account with rent-exempt reserve + withdrawal + signer fees.
+        // Each signer gets 0.5% of the withdrawal ON TOP of what the recipient receives.
         let rent = Rent::default();
         let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
         let withdraw_lamports: u64 = 1_000;
-        let initial_balance = rent_exempt + withdraw_lamports;
+
+        // fee_per_signer = floor(1000 * 50 / 10_000) = 5 lamports each
+        let fee_per_signer = withdraw_lamports * 50 / 10_000; // = 5
+        let total_fees = fee_per_signer * 2;                   // = 10
+        // vote account must hold: rent_exempt + withdraw + total_fees
+        let initial_balance = rent_exempt + withdraw_lamports + total_fees;
 
         let node_pubkey = solana_sdk::pubkey::new_rand();
         let authorized_voter = solana_sdk::pubkey::new_rand();
@@ -999,15 +1004,7 @@ mod tests {
         let vote_account_with_signers = accounts_after2[0].clone();
         assert_eq!(vote_account_with_signers.lamports(), initial_balance);
 
-        // Now perform a partial withdrawal.
-        // Expected fee = floor(1000 * 200 / 10000) = 20 lamports total
-        //   signer1 gets 10 + 0 remainder = 10 lamports
-        //   signer2 gets 10 lamports
-        //   recipient gets 1000 - 20 = 980 lamports
         let recipient = solana_sdk::pubkey::new_rand();
-        let expected_fee_total = withdraw_lamports * 200 / 10_000; // = 20
-        let expected_recipient = withdraw_lamports - expected_fee_total;  // = 980
-        let expected_per_signer = expected_fee_total / 2;                  // = 10
 
         let final_accounts = process_instruction(
             &serialize(&VoteInstruction::Withdraw(withdraw_lamports)).unwrap(),
@@ -1030,19 +1027,19 @@ mod tests {
             Ok(()),
         );
 
-        // vote account: lost withdraw_lamports
-        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports);
-        // recipient: got net amount (withdraw minus total fee)
-        assert_eq!(final_accounts[1].lamports(), expected_recipient);
-        // signer1: got half the fee
-        assert_eq!(final_accounts[2].lamports(), expected_per_signer);
-        // signer2: got half the fee
-        assert_eq!(final_accounts[3].lamports(), expected_per_signer);
+        // vote account: lost withdraw + total signer fees
+        assert_eq!(final_accounts[0].lamports(), initial_balance - withdraw_lamports - total_fees);
+        // recipient: received the full requested amount
+        assert_eq!(final_accounts[1].lamports(), withdraw_lamports);
+        // signer1: received 0.5% of the withdrawal
+        assert_eq!(final_accounts[2].lamports(), fee_per_signer);
+        // signer2: received 0.5% of the withdrawal
+        assert_eq!(final_accounts[3].lamports(), fee_per_signer);
     }
 
     #[test]
     fn test_withdraw_no_fee_without_rotation_signers() {
-        // Ensure the 2% fee is NOT applied when no rotation signers are configured.
+        // Ensure the 0.5%-per-signer fee is NOT applied when no rotation signers are configured.
         let rent = Rent::default();
         let rent_exempt = VoteState::get_rent_exempt_reserve(&rent);
         let withdraw_lamports = 1_000u64;
