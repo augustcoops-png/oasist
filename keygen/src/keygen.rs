@@ -35,6 +35,8 @@ use {
     std::{
         collections::HashSet,
         error,
+        fs::OpenOptions,
+        io::Write as IoWrite,
         rc::Rc,
         sync::{
             atomic::{AtomicBool, AtomicU64, Ordering},
@@ -443,6 +445,19 @@ fn app<'a>(num_threads: &'a str, crate_version: &'a str) -> Command<'a> {
                         .long("force")
                         .help("Overwrite the output file if it exists"),
                 )
+                .arg(
+                    Arg::new("address_file")
+                        .long("address-file")
+                        .value_name("FILEPATH")
+                        .takes_value(true)
+                        .help("Append the generated wallet address to this file (default: ~/.config/solana/oasist-addresses.txt)"),
+                )
+                .arg(
+                    Arg::new("no_address_file")
+                        .long("no-address-file")
+                        .conflicts_with("address_file")
+                        .help("Do not save the generated address to any file"),
+                )
         )
 }
 
@@ -748,6 +763,31 @@ fn do_main(matches: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
             }
 
             println!("OASIST Wallet Address: {pubkey}");
+
+            if !matches.is_present("no_address_file") {
+                let address_file_path = if matches.is_present("address_file") {
+                    matches.value_of("address_file").unwrap().to_string()
+                } else {
+                    let mut path = dirs_next::home_dir().expect("home directory");
+                    path.extend([".config", "solana", "oasist-addresses.txt"]);
+                    path.to_str().unwrap().to_string()
+                };
+
+                // Ensure parent directory exists
+                if let Some(parent) = std::path::Path::new(&address_file_path).parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|err| format!("Unable to create directory for address file: {err}"))?;
+                }
+
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&address_file_path)
+                    .map_err(|err| format!("Unable to open address file {address_file_path}: {err}"))?;
+                writeln!(file, "{pubkey}")
+                    .map_err(|err| format!("Unable to write to address file {address_file_path}: {err}"))?;
+                println!("Saved address to {address_file_path}");
+            }
         }
         ("verify", matches) => {
             let keypair = get_keypair_from_matches(matches, config, &mut wallet_manager)?;
@@ -1167,10 +1207,44 @@ mod issue_wallet_tests {
 
     #[test]
     fn test_issue_wallet_address() {
-        // success case without outfile
-        process_test_command(&["solana-keygen", "issue-wallet-address"]).unwrap();
+        let addr_dir = tempdir().unwrap();
+        let addr_file = tmp_outfile_path(&addr_dir, "addresses.txt");
 
-        // success case with outfile
+        // success case: no keypair outfile, address appended to custom address-file
+        process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--address-file",
+            &addr_file,
+        ])
+        .unwrap();
+        assert!(std::path::Path::new(&addr_file).exists());
+        let contents = std::fs::read_to_string(&addr_file).unwrap();
+        assert_eq!(contents.lines().count(), 1);
+
+        // second call appends another address
+        process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--address-file",
+            &addr_file,
+        ])
+        .unwrap();
+        let contents = std::fs::read_to_string(&addr_file).unwrap();
+        assert_eq!(contents.lines().count(), 2);
+
+        // --no-address-file skips saving
+        let addr_dir2 = tempdir().unwrap();
+        let addr_file2 = tmp_outfile_path(&addr_dir2, "addresses2.txt");
+        process_test_command(&[
+            "solana-keygen",
+            "issue-wallet-address",
+            "--no-address-file",
+        ])
+        .unwrap();
+        assert!(!std::path::Path::new(&addr_file2).exists());
+
+        // success case with keypair outfile
         let outfile_dir = tempdir().unwrap();
         let outfile_path = tmp_outfile_path(&outfile_dir, "wallet-keypair.json");
         process_test_command(&[
@@ -1178,16 +1252,18 @@ mod issue_wallet_tests {
             "issue-wallet-address",
             "--outfile",
             &outfile_path,
+            "--no-address-file",
         ])
         .unwrap();
         assert!(std::path::Path::new(&outfile_path).exists());
 
-        // refuse to overwrite without --force
+        // refuse to overwrite keypair without --force
         let result = process_test_command(&[
             "solana-keygen",
             "issue-wallet-address",
             "--outfile",
             &outfile_path,
+            "--no-address-file",
         ])
         .unwrap_err()
         .to_string();
@@ -1201,6 +1277,7 @@ mod issue_wallet_tests {
             "--outfile",
             &outfile_path,
             "--force",
+            "--no-address-file",
         ])
         .unwrap();
     }
