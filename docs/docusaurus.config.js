@@ -1,14 +1,14 @@
 const math = require("remark-math");
 const katex = require("rehype-katex");
 module.exports = {
-  title: "Solana Validator",
+  title: "Oasist",
   tagline:
-    "Solana is an open source project implementing a new, high-performance, permissionless blockchain.",
-  url: "https://docs.solanalabs.com",
+    "Oasist is an open source project implementing a high-performance, permissionless blockchain.",
+  url: "https://docs.oasist.io",
   baseUrl: "/",
   favicon: "img/favicon.ico",
-  organizationName: "solana-labs", // Usually your GitHub org/user name.
-  projectName: "solana", // Usually your repo name.
+  organizationName: "augustcoops-png", // Usually your GitHub org/user name.
+  projectName: "oasist", // Usually your repo name.
   onBrokenLinks: "throw",
   stylesheets: [
     {
@@ -50,9 +50,9 @@ module.exports = {
     },
     navbar: {
       logo: {
-        alt: "Solana Logo",
-        src: "img/logo-horizontal.svg",
-        srcDark: "img/logo-horizontal-dark.svg",
+        alt: "Oasist Logo",
+        src: "img/oasist-logo.svg",
+        srcDark: "img/oasist-logo-dark.svg",
       },
       items: [
         {
@@ -175,7 +175,7 @@ module.exports = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Solana Labs`,
+      copyright: `Copyright © ${new Date().getFullYear()} Oasist`,
     },
   },
   presets: [
