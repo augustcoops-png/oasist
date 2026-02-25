@@ -1,0 +1,1570 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Solana JSON RPC API",
+    "description": "OpenAPI specification for the Solana blockchain JSON RPC API. All requests are POST to the RPC endpoint using JSON-RPC 2.0.",
+    "version": "1.0.0",
+    "contact": {
+      "url": "https://solana.com"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.mainnet-beta.solana.com",
+      "description": "Mainnet Beta"
+    },
+    {
+      "url": "https://api.devnet.solana.com",
+      "description": "Devnet"
+    },
+    {
+      "url": "https://api.testnet.solana.com",
+      "description": "Testnet"
+    },
+    {
+      "url": "http://localhost:8899",
+      "description": "Localhost"
+    }
+  ],
+  "paths": {
+    "/": {
+      "post": {
+        "summary": "JSON RPC Endpoint",
+        "description": "Send a JSON-RPC 2.0 request to the Solana cluster. Use the `method` field to specify the RPC method.",
+        "operationId": "rpc",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonRpcRequest"
+              },
+              "examples": {
+                "getBalance": {
+                  "summary": "getBalance example",
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getBalance",
+                    "params": ["83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri"]
+                  }
+                },
+                "getLatestBlockhash": {
+                  "summary": "getLatestBlockhash example",
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getLatestBlockhash",
+                    "params": [{"commitment": "finalized"}]
+                  }
+                },
+                "sendTransaction": {
+                  "summary": "sendTransaction example",
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "sendTransaction",
+                    "params": ["4hXTCkRzt9WyecNzV1XPgCDfGAZzQKNxLXgynz5QDuWWPSAZBZSHptvWRL3BjCvzUXRdKvHL2b7yGrRQcWyaqsaBCncVG7BFggS8w9snUts67BSh1Pbq3D3V5xbL72kKt", {"encoding": "base64"}]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonRpcResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": ["JSON RPC"]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JsonRpcRequest": {
+        "type": "object",
+        "required": ["jsonrpc", "id", "method"],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": ["2.0"],
+            "description": "JSON-RPC protocol version"
+          },
+          "id": {
+            "oneOf": [
+              {"type": "integer"},
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "description": "Client-defined identifier for the request"
+          },
+          "method": {
+            "type": "string",
+            "description": "Name of the RPC method to invoke. Each method targets a specific piece of cluster state or submits work to the network:\n\n- **getAccountInfo** – Returns all information associated with the account of the provided pubkey.\n- **getBalance** – Returns the lamport balance of the account of the provided pubkey.\n- **getBlock** – Returns identity and transaction information about a confirmed block in the ledger.\n- **getBlockHeight** – Returns the current block height of the node.\n- **getBlockProduction** – Returns recent block production information from the current or previous epoch.\n- **getBlocks** – Returns a list of confirmed block slots between two slot values.\n- **getBlocksWithLimit** – Returns a list of confirmed blocks starting at a given slot, up to a maximum count.\n- **getBlockTime** – Returns the estimated production time of a confirmed block as a Unix timestamp.\n- **getClusterNodes** – Returns information (gossip address, TPU address, software version, etc.) about all nodes participating in the cluster.\n- **getEpochInfo** – Returns information about the current epoch (epoch number, slot index, slots-in-epoch, transaction count, etc.).\n- **getEpochSchedule** – Returns the epoch schedule (slots per epoch, leader schedule slot offset, etc.) from the cluster's genesis config.\n- **getFeeForMessage** – Returns the fee the network will charge for a particular base-64-encoded message.\n- **getFirstAvailableBlock** – Returns the slot of the lowest confirmed block that has not been purged from the ledger.\n- **getGenesisHash** – Returns the genesis hash of the cluster.\n- **getHealth** – Returns the current health of the node; returns \"ok\" when healthy, otherwise an error.\n- **getHighestSnapshotSlot** – Returns the highest full and incremental snapshot slots the node has available.\n- **getIdentity** – Returns the identity public key of the current node.\n- **getInflationGovernor** – Returns the current inflation governor parameters (initial rate, terminal rate, taper, foundation allocation).\n- **getInflationRate** – Returns the specific inflation values (total, validator share, foundation share) for the current epoch.\n- **getInflationReward** – Returns the inflation and staking reward earned by a list of addresses during a given epoch.\n- **getLargestAccounts** – Returns the 20 largest accounts by lamport balance, optionally filtered by account type.\n- **getLatestBlockhash** – Returns the latest blockhash and the last block height at which it will be valid.\n- **getLeaderSchedule** – Returns the leader schedule (validator-to-slot mapping) for a given epoch.\n- **getMaxRetransmitSlot** – Returns the highest slot seen from the retransmit stage.\n- **getMaxShredInsertSlot** – Returns the highest slot seen after shred insertion.\n- **getMinimumBalanceForRentExemption** – Returns the minimum lamport balance required for an account of a given byte-size to be exempt from rent.\n- **getMultipleAccounts** – Returns the account information for a list of up to 100 pubkeys in a single call.\n- **getProgramAccounts** – Returns all accounts owned by the provided program pubkey, with optional data filters.\n- **getRecentPerformanceSamples** – Returns a list of recent performance samples (transactions per second, slots) in reverse slot order.\n- **getRecentPrioritizationFees** – Returns a list of per-compute-unit prioritization fees observed in recent blocks.\n- **getSignaturesForAddress** – Returns confirmed transaction signatures involving a given address, ordered from newest to oldest.\n- **getSignatureStatuses** – Returns the confirmation status and error (if any) for up to 256 transaction signatures.\n- **getSlot** – Returns the slot that has reached the given (or default) commitment level.\n- **getSlotLeader** – Returns the public key of the current slot leader.\n- **getSlotLeaders** – Returns the ordered list of slot leaders for a given slot range.\n- **getStakeActivation** – Returns the epoch activation and deactivation state for a stake account.\n- **getStakeMinimumDelegation** – Returns the minimum stake delegation amount in lamports.\n- **getSupply** – Returns the total, circulating, and non-circulating lamport supply of the cluster.\n- **getTokenAccountBalance** – Returns the SPL Token balance (amount, decimals, UI amount) of a given token account.\n- **getTokenAccountsByDelegate** – Returns all SPL Token accounts for which the given pubkey is the approved delegate.\n- **getTokenAccountsByOwner** – Returns all SPL Token accounts owned by the given pubkey, optionally filtered by mint or program.\n- **getTokenLargestAccounts** – Returns the 20 largest holders of a particular SPL Token mint.\n- **getTokenSupply** – Returns the total circulating supply of an SPL Token mint.\n- **getTransaction** – Returns the full transaction details (message, signatures, metadata, logs) for a confirmed transaction.\n- **getTransactionCount** – Returns the total number of transactions that have been confirmed by the ledger since genesis.\n- **getVersion** – Returns the current Solana software version (`solana-core` semver and feature-set identifier) running on the node.\n- **getVoteAccounts** – Returns the account info and associated activated stake for all voting accounts in the current bank, split into current and delinquent sets.\n- **isBlockhashValid** – Returns whether a given blockhash is still valid (i.e. has not expired).\n- **minimumLedgerSlot** – Returns the lowest slot that the node has information about in its ledger (slots below this have been purged).\n- **requestAirdrop** – Requests an airdrop of a specified number of lamports to a pubkey. Only available on devnet and testnet.\n- **sendTransaction** – Submits a fully-signed, serialised transaction to the cluster for processing and returns its signature.\n- **simulateTransaction** – Simulates executing a transaction without submitting it to the network, returning logs, account states, and units consumed.",
+            "enum": [
+              "getAccountInfo",
+              "getBalance",
+              "getBlock",
+              "getBlockHeight",
+              "getBlockProduction",
+              "getBlocks",
+              "getBlocksWithLimit",
+              "getBlockTime",
+              "getClusterNodes",
+              "getEpochInfo",
+              "getEpochSchedule",
+              "getFeeForMessage",
+              "getFirstAvailableBlock",
+              "getGenesisHash",
+              "getHealth",
+              "getHighestSnapshotSlot",
+              "getIdentity",
+              "getInflationGovernor",
+              "getInflationRate",
+              "getInflationReward",
+              "getLargestAccounts",
+              "getLatestBlockhash",
+              "getLeaderSchedule",
+              "getMaxRetransmitSlot",
+              "getMaxShredInsertSlot",
+              "getMinimumBalanceForRentExemption",
+              "getMultipleAccounts",
+              "getProgramAccounts",
+              "getRecentPerformanceSamples",
+              "getRecentPrioritizationFees",
+              "getSignaturesForAddress",
+              "getSignatureStatuses",
+              "getSlot",
+              "getSlotLeader",
+              "getSlotLeaders",
+              "getStakeActivation",
+              "getStakeMinimumDelegation",
+              "getSupply",
+              "getTokenAccountBalance",
+              "getTokenAccountsByDelegate",
+              "getTokenAccountsByOwner",
+              "getTokenLargestAccounts",
+              "getTokenSupply",
+              "getTransaction",
+              "getTransactionCount",
+              "getVersion",
+              "getVoteAccounts",
+              "isBlockhashValid",
+              "minimumLedgerSlot",
+              "requestAirdrop",
+              "sendTransaction",
+              "simulateTransaction"
+            ],
+            "x-enumDescriptions": {
+              "getAccountInfo": "Returns all information associated with the account of the provided pubkey.",
+              "getBalance": "Returns the lamport balance of the account of the provided pubkey.",
+              "getBlock": "Returns identity and transaction information about a confirmed block in the ledger.",
+              "getBlockHeight": "Returns the current block height of the node.",
+              "getBlockProduction": "Returns recent block production information from the current or previous epoch.",
+              "getBlocks": "Returns a list of confirmed block slots between two slot values.",
+              "getBlocksWithLimit": "Returns a list of confirmed blocks starting at a given slot, up to a maximum count.",
+              "getBlockTime": "Returns the estimated production time of a confirmed block as a Unix timestamp.",
+              "getClusterNodes": "Returns information (gossip address, TPU address, software version, etc.) about all nodes participating in the cluster.",
+              "getEpochInfo": "Returns information about the current epoch (epoch number, slot index, slots-in-epoch, transaction count, etc.).",
+              "getEpochSchedule": "Returns the epoch schedule (slots per epoch, leader schedule slot offset, etc.) from the cluster's genesis config.",
+              "getFeeForMessage": "Returns the fee the network will charge for a particular base-64-encoded message.",
+              "getFirstAvailableBlock": "Returns the slot of the lowest confirmed block that has not been purged from the ledger.",
+              "getGenesisHash": "Returns the genesis hash of the cluster.",
+              "getHealth": "Returns the current health of the node; returns \"ok\" when healthy, otherwise an error.",
+              "getHighestSnapshotSlot": "Returns the highest full and incremental snapshot slots the node has available.",
+              "getIdentity": "Returns the identity public key of the current node.",
+              "getInflationGovernor": "Returns the current inflation governor parameters (initial rate, terminal rate, taper, foundation allocation).",
+              "getInflationRate": "Returns the specific inflation values (total, validator share, foundation share) for the current epoch.",
+              "getInflationReward": "Returns the inflation and staking reward earned by a list of addresses during a given epoch.",
+              "getLargestAccounts": "Returns the 20 largest accounts by lamport balance, optionally filtered by account type.",
+              "getLatestBlockhash": "Returns the latest blockhash and the last block height at which it will be valid.",
+              "getLeaderSchedule": "Returns the leader schedule (validator-to-slot mapping) for a given epoch.",
+              "getMaxRetransmitSlot": "Returns the highest slot seen from the retransmit stage.",
+              "getMaxShredInsertSlot": "Returns the highest slot seen after shred insertion.",
+              "getMinimumBalanceForRentExemption": "Returns the minimum lamport balance required for an account of a given byte-size to be exempt from rent.",
+              "getMultipleAccounts": "Returns the account information for a list of up to 100 pubkeys in a single call.",
+              "getProgramAccounts": "Returns all accounts owned by the provided program pubkey, with optional data filters.",
+              "getRecentPerformanceSamples": "Returns a list of recent performance samples (transactions per second, slots) in reverse slot order.",
+              "getRecentPrioritizationFees": "Returns a list of per-compute-unit prioritization fees observed in recent blocks.",
+              "getSignaturesForAddress": "Returns confirmed transaction signatures involving a given address, ordered from newest to oldest.",
+              "getSignatureStatuses": "Returns the confirmation status and error (if any) for up to 256 transaction signatures.",
+              "getSlot": "Returns the slot that has reached the given (or default) commitment level.",
+              "getSlotLeader": "Returns the public key of the current slot leader.",
+              "getSlotLeaders": "Returns the ordered list of slot leaders for a given slot range.",
+              "getStakeActivation": "Returns the epoch activation and deactivation state for a stake account.",
+              "getStakeMinimumDelegation": "Returns the minimum stake delegation amount in lamports.",
+              "getSupply": "Returns the total, circulating, and non-circulating lamport supply of the cluster.",
+              "getTokenAccountBalance": "Returns the SPL Token balance (amount, decimals, UI amount) of a given token account.",
+              "getTokenAccountsByDelegate": "Returns all SPL Token accounts for which the given pubkey is the approved delegate.",
+              "getTokenAccountsByOwner": "Returns all SPL Token accounts owned by the given pubkey, optionally filtered by mint or program.",
+              "getTokenLargestAccounts": "Returns the 20 largest holders of a particular SPL Token mint.",
+              "getTokenSupply": "Returns the total circulating supply of an SPL Token mint.",
+              "getTransaction": "Returns the full transaction details (message, signatures, metadata, logs) for a confirmed transaction.",
+              "getTransactionCount": "Returns the total number of transactions that have been confirmed by the ledger since genesis.",
+              "getVersion": "Returns the current Solana software version (solana-core semver and feature-set identifier) running on the node.",
+              "getVoteAccounts": "Returns the account info and associated activated stake for all voting accounts in the current bank, split into current and delinquent sets.",
+              "isBlockhashValid": "Returns whether a given blockhash is still valid (i.e. has not expired).",
+              "minimumLedgerSlot": "Returns the lowest slot that the node has information about in its ledger (slots below this have been purged).",
+              "requestAirdrop": "Requests an airdrop of a specified number of lamports to a pubkey. Only available on devnet and testnet.",
+              "sendTransaction": "Submits a fully-signed, serialised transaction to the cluster for processing and returns its signature.",
+              "simulateTransaction": "Simulates executing a transaction without submitting it to the network, returning logs, account states, and units consumed."
+            }
+          },
+          "params": {
+            "type": "array",
+            "description": "Method parameters. The structure depends on the method being called.",
+            "items": {}
+          }
+        }
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": ["2.0"]
+          },
+          "id": {
+            "oneOf": [
+              {"type": "integer"},
+              {"type": "string"},
+              {"type": "null"}
+            ]
+          },
+          "result": {
+            "description": "The result of the RPC call. Structure varies by method."
+          },
+          "error": {
+            "$ref": "#/components/schemas/JsonRpcError"
+          }
+        }
+      },
+      "JsonRpcError": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "data": {
+            "description": "Additional error data"
+          }
+        }
+      },
+      "RpcResponseContext": {
+        "type": "object",
+        "required": ["slot"],
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "format": "uint64",
+            "description": "The slot at which the response was evaluated"
+          },
+          "apiVersion": {
+            "type": "string",
+            "description": "The node software version"
+          }
+        }
+      },
+      "Commitment": {
+        "type": "string",
+        "enum": ["finalized", "confirmed", "processed"],
+        "description": "The level of commitment desired for the query"
+      },
+      "Encoding": {
+        "type": "string",
+        "enum": ["base58", "base64", "base64+zstd", "jsonParsed"],
+        "description": "Data encoding format"
+      },
+      "Pubkey": {
+        "type": "string",
+        "description": "Base-58 encoded public key (32 bytes)"
+      },
+      "Signature": {
+        "type": "string",
+        "description": "Base-58 encoded transaction signature"
+      },
+      "Blockhash": {
+        "type": "string",
+        "description": "Base-58 encoded blockhash"
+      },
+      "Slot": {
+        "type": "integer",
+        "format": "uint64",
+        "description": "A slot number"
+      },
+      "Epoch": {
+        "type": "integer",
+        "format": "uint64",
+        "description": "An epoch number"
+      },
+      "Lamports": {
+        "type": "integer",
+        "format": "uint64",
+        "description": "Balance in lamports (1 SOL = 1,000,000,000 lamports)"
+      },
+      "RpcAccountInfo": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "description": "Account data encoded as base58, base64, base64+zstd, or parsed JSON"
+          },
+          "executable": {
+            "type": "boolean",
+            "description": "Whether the account contains a program"
+          },
+          "lamports": {
+            "$ref": "#/components/schemas/Lamports"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Pubkey",
+            "description": "Base-58 encoded public key of the program this account has been assigned to"
+          },
+          "rentEpoch": {
+            "$ref": "#/components/schemas/Epoch",
+            "description": "The epoch at which this account will next owe rent"
+          },
+          "space": {
+            "type": "integer",
+            "format": "uint64",
+            "description": "The data size of the account"
+          }
+        }
+      },
+      "GetAccountInfoRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getAccountInfo"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Pubkey of account to query"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"},
+                      "encoding": {"$ref": "#/components/schemas/Encoding"},
+                      "dataSlice": {
+                        "type": "object",
+                        "properties": {
+                          "offset": {"type": "integer"},
+                          "length": {"type": "integer"}
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetAccountInfoResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "oneOf": [
+                      {"$ref": "#/components/schemas/RpcAccountInfo"},
+                      {"type": "null"}
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetBalanceRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getBalance"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Pubkey of account to query"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetBalanceResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "$ref": "#/components/schemas/Lamports",
+                    "description": "Account balance in lamports"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetBlockRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getBlock"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Slot",
+                    "description": "Slot number"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {
+                        "type": "string",
+                        "enum": ["finalized", "confirmed"],
+                        "description": "Commitment level (processed not supported)"
+                      },
+                      "encoding": {
+                        "type": "string",
+                        "enum": ["json", "jsonParsed", "base58", "base64"]
+                      },
+                      "transactionDetails": {
+                        "type": "string",
+                        "enum": ["full", "accounts", "signatures", "none"]
+                      },
+                      "maxSupportedTransactionVersion": {
+                        "type": "integer",
+                        "description": "Maximum supported transaction version"
+                      },
+                      "rewards": {
+                        "type": "boolean",
+                        "description": "Whether to populate the rewards array"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetBlockHeightResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "integer",
+                "format": "uint64",
+                "description": "Current block height"
+              }
+            }
+          }
+        ]
+      },
+      "GetClusterNodesResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "pubkey": {"$ref": "#/components/schemas/Pubkey"},
+                    "gossip": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Gossip network address"
+                    },
+                    "tpu": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "TPU network address"
+                    },
+                    "rpc": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "JSON RPC network address"
+                    },
+                    "version": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Software version"
+                    },
+                    "featureSet": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Feature set identifier"
+                    },
+                    "shredVersion": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Shred version"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetEpochInfoResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "absoluteSlot": {"$ref": "#/components/schemas/Slot"},
+                  "blockHeight": {
+                    "type": "integer",
+                    "format": "uint64"
+                  },
+                  "epoch": {"$ref": "#/components/schemas/Epoch"},
+                  "slotIndex": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "description": "Current slot index within the epoch"
+                  },
+                  "slotsInEpoch": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "description": "Number of slots in this epoch"
+                  },
+                  "transactionCount": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "nullable": true,
+                    "description": "Total transaction count since genesis"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetHealthResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "string",
+                "enum": ["ok"],
+                "description": "\"ok\" if the node is healthy"
+              }
+            }
+          }
+        ]
+      },
+      "GetIdentityResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "The identity public key of the current node"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetInflationGovernorResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "initial": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Initial inflation percentage from time 0"
+                  },
+                  "terminal": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Terminal inflation percentage"
+                  },
+                  "taper": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Rate per year at which inflation is lowered"
+                  },
+                  "foundation": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Percentage of total inflation allocated to the foundation"
+                  },
+                  "foundationTerm": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Duration of foundation pool inflation in years"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetInflationRateResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Total inflation"
+                  },
+                  "validator": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Inflation allocated to validators"
+                  },
+                  "foundation": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Inflation allocated to the foundation"
+                  },
+                  "epoch": {
+                    "$ref": "#/components/schemas/Epoch",
+                    "description": "Epoch for which these values are valid"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetLatestBlockhashResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "type": "object",
+                    "properties": {
+                      "blockhash": {
+                        "$ref": "#/components/schemas/Blockhash",
+                        "description": "The latest blockhash"
+                      },
+                      "lastValidBlockHeight": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "description": "Last block height at which the blockhash will be valid"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetMinimumBalanceForRentExemptionRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getMinimumBalanceForRentExemption"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "integer",
+                    "description": "Account data length in bytes"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetMinimumBalanceForRentExemptionResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Lamports",
+                "description": "Minimum lamports required for rent exemption"
+              }
+            }
+          }
+        ]
+      },
+      "GetSignatureStatusesRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getSignatureStatuses"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/Signature"},
+                    "maxItems": 256,
+                    "description": "Array of transaction signatures to confirm"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "searchTransactionHistory": {
+                        "type": "boolean",
+                        "description": "If true, search the entire transaction history"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetSignatureStatusesResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "slot": {"$ref": "#/components/schemas/Slot"},
+                            "confirmations": {
+                              "type": "integer",
+                              "nullable": true,
+                              "description": "Number of blocks since confirmation"
+                            },
+                            "err": {
+                              "description": "Error if transaction failed, null if succeeded"
+                            },
+                            "confirmationStatus": {
+                              "type": "string",
+                              "enum": ["processed", "confirmed", "finalized"],
+                              "nullable": true
+                            }
+                          }
+                        },
+                        {"type": "null"}
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetSlotResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Slot",
+                "description": "Current slot"
+              }
+            }
+          }
+        ]
+      },
+      "GetSupplyResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "$ref": "#/components/schemas/Lamports",
+                        "description": "Total supply in lamports"
+                      },
+                      "circulating": {
+                        "$ref": "#/components/schemas/Lamports",
+                        "description": "Circulating supply in lamports"
+                      },
+                      "nonCirculating": {
+                        "$ref": "#/components/schemas/Lamports",
+                        "description": "Non-circulating supply in lamports"
+                      },
+                      "nonCirculatingAccounts": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/Pubkey"},
+                        "description": "Array of non-circulating account addresses"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetTransactionCountResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "integer",
+                "format": "uint64",
+                "description": "The current transaction count from the ledger"
+              }
+            }
+          }
+        ]
+      },
+      "GetVersionResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "solana-core": {
+                    "type": "string",
+                    "description": "Software version of solana-core"
+                  },
+                  "feature-set": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "description": "Unique identifier of the current software feature set"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "IsBlockhashValidRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["isBlockhashValid"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Blockhash",
+                    "description": "The blockhash to validate"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "IsBlockhashValidResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "type": "boolean",
+                    "description": "true if the blockhash is still valid"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RequestAirdropRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["requestAirdrop"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Pubkey of account to receive lamports"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Lamports",
+                    "description": "Lamports to airdrop"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RequestAirdropResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Signature",
+                "description": "Transaction signature of the airdrop"
+              }
+            }
+          }
+        ]
+      },
+      "SendTransactionRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["sendTransaction"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "string",
+                    "description": "Fully-signed transaction, as encoded string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "encoding": {
+                        "type": "string",
+                        "enum": ["base58", "base64"],
+                        "description": "Encoding of the transaction"
+                      },
+                      "skipPreflight": {
+                        "type": "boolean",
+                        "description": "If true, skip preflight transaction checks"
+                      },
+                      "preflightCommitment": {
+                        "$ref": "#/components/schemas/Commitment",
+                        "description": "Commitment level for preflight"
+                      },
+                      "maxRetries": {
+                        "type": "integer",
+                        "description": "Maximum times for the RPC node to retry sending the transaction"
+                      },
+                      "minContextSlot": {
+                        "$ref": "#/components/schemas/Slot",
+                        "description": "Minimum slot to evaluate the request"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "SendTransactionResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Signature",
+                "description": "First transaction signature embedded in the transaction"
+              }
+            }
+          }
+        ]
+      },
+      "SimulateTransactionRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["simulateTransaction"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "string",
+                    "description": "Transaction, as encoded string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "sigVerify": {
+                        "type": "boolean",
+                        "description": "If true, the transaction signatures will be verified"
+                      },
+                      "commitment": {"$ref": "#/components/schemas/Commitment"},
+                      "encoding": {
+                        "type": "string",
+                        "enum": ["base58", "base64"]
+                      },
+                      "replaceRecentBlockhash": {
+                        "type": "boolean",
+                        "description": "If true, replace the transaction's recent blockhash with the latest"
+                      },
+                      "accounts": {
+                        "type": "object",
+                        "properties": {
+                          "encoding": {"$ref": "#/components/schemas/Encoding"},
+                          "addresses": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Pubkey"}
+                          }
+                        }
+                      },
+                      "minContextSlot": {
+                        "$ref": "#/components/schemas/Slot"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "SimulateTransactionResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {
+                    "type": "object",
+                    "properties": {
+                      "err": {
+                        "description": "Error if transaction failed, null if succeeded"
+                      },
+                      "logs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "nullable": true,
+                        "description": "Array of log messages output during simulation"
+                      },
+                      "accounts": {
+                        "type": "array",
+                        "nullable": true,
+                        "items": {
+                          "oneOf": [
+                            {"$ref": "#/components/schemas/RpcAccountInfo"},
+                            {"type": "null"}
+                          ]
+                        }
+                      },
+                      "unitsConsumed": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "nullable": true,
+                        "description": "Number of compute budget units consumed during processing"
+                      },
+                      "returnData": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "programId": {"$ref": "#/components/schemas/Pubkey"},
+                          "data": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "[data, encoding] tuple"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetSignaturesForAddressRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getSignaturesForAddress"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Account address"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"},
+                      "minContextSlot": {"$ref": "#/components/schemas/Slot"},
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": "Maximum number of signatures to return (default 1000)"
+                      },
+                      "before": {
+                        "$ref": "#/components/schemas/Signature",
+                        "description": "Start searching backwards from this signature"
+                      },
+                      "until": {
+                        "$ref": "#/components/schemas/Signature",
+                        "description": "Search until this signature (inclusive)"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetSignaturesForAddressResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "signature": {"$ref": "#/components/schemas/Signature"},
+                    "slot": {"$ref": "#/components/schemas/Slot"},
+                    "err": {
+                      "description": "Error if transaction failed, null if succeeded"
+                    },
+                    "memo": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Memo associated with the transaction"
+                    },
+                    "blockTime": {
+                      "type": "integer",
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "Estimated production time as Unix timestamp"
+                    },
+                    "confirmationStatus": {
+                      "type": "string",
+                      "enum": ["processed", "confirmed", "finalized"],
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GetTransactionRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getTransaction"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Signature",
+                    "description": "Transaction signature"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {
+                        "type": "string",
+                        "enum": ["finalized", "confirmed"]
+                      },
+                      "encoding": {
+                        "type": "string",
+                        "enum": ["json", "jsonParsed", "base58", "base64"]
+                      },
+                      "maxSupportedTransactionVersion": {
+                        "type": "integer",
+                        "description": "Maximum supported transaction version"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetVoteAccountsResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "current": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/VoteAccount"}
+                  },
+                  "delinquent": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/VoteAccount"}
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VoteAccount": {
+        "type": "object",
+        "properties": {
+          "votePubkey": {
+            "$ref": "#/components/schemas/Pubkey",
+            "description": "Vote account public key"
+          },
+          "nodePubkey": {
+            "$ref": "#/components/schemas/Pubkey",
+            "description": "Validator identity public key"
+          },
+          "activatedStake": {
+            "$ref": "#/components/schemas/Lamports",
+            "description": "Stake delegated to this vote account, in lamports"
+          },
+          "epochVoteAccount": {
+            "type": "boolean",
+            "description": "Whether the vote account is staked for this epoch"
+          },
+          "commission": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Percentage of rewards payout owed to the vote account"
+          },
+          "lastVote": {
+            "type": "integer",
+            "format": "uint64",
+            "description": "Most recent slot voted on"
+          },
+          "epochCredits": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {"type": "integer"},
+              "description": "[epoch, credits, previousCredits] tuple"
+            }
+          },
+          "rootSlot": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true
+          }
+        }
+      },
+      "GetMultipleAccountsRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getMultipleAccounts"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/Pubkey"},
+                    "maxItems": 100,
+                    "description": "Array of pubkeys to query"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"},
+                      "encoding": {"$ref": "#/components/schemas/Encoding"},
+                      "dataSlice": {
+                        "type": "object",
+                        "properties": {
+                          "offset": {"type": "integer"},
+                          "length": {"type": "integer"}
+                        }
+                      },
+                      "minContextSlot": {"$ref": "#/components/schemas/Slot"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetProgramAccountsRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getProgramAccounts"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Program public key"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"},
+                      "minContextSlot": {"$ref": "#/components/schemas/Slot"},
+                      "withContext": {
+                        "type": "boolean",
+                        "description": "Wrap the result in an RpcResponse JSON object"
+                      },
+                      "encoding": {"$ref": "#/components/schemas/Encoding"},
+                      "dataSlice": {
+                        "type": "object",
+                        "properties": {
+                          "offset": {"type": "integer"},
+                          "length": {"type": "integer"}
+                        }
+                      },
+                      "filters": {
+                        "type": "array",
+                        "description": "Filter results using various filter objects",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "memcmp": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {"type": "integer"},
+                                    "bytes": {"type": "string"},
+                                    "encoding": {
+                                      "type": "string",
+                                      "enum": ["base58", "base64"]
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dataSize": {"type": "integer"}
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "GetTokenAccountBalanceRequest": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcRequest"},
+          {
+            "properties": {
+              "method": {"type": "string", "enum": ["getTokenAccountBalance"]},
+              "params": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey",
+                    "description": "Pubkey of Token account to query"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commitment": {"$ref": "#/components/schemas/Commitment"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "TokenAmount": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "description": "Raw balance without decimals, as u64 string"
+          },
+          "decimals": {
+            "type": "integer",
+            "format": "uint8",
+            "description": "Number of base 10 digits to the right of the decimal place"
+          },
+          "uiAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "Balance using mint-prescribed decimals"
+          },
+          "uiAmountString": {
+            "type": "string",
+            "description": "Balance as string using mint-prescribed decimals"
+          }
+        }
+      },
+      "GetTokenAccountBalanceResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "context": {"$ref": "#/components/schemas/RpcResponseContext"},
+                  "value": {"$ref": "#/components/schemas/TokenAmount"}
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MinimumLedgerSlotResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Slot",
+                "description": "Minimum ledger slot number"
+              }
+            }
+          }
+        ]
+      },
+      "GetFirstAvailableBlockResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/Slot",
+                "description": "Slot of the lowest confirmed block not purged from ledger"
+              }
+            }
+          }
+        ]
+      },
+      "GetGenesisHashResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/JsonRpcResponse"},
+          {
+            "properties": {
+              "result": {
+                "type": "string",
+                "description": "Base-58 encoded genesis hash"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "JSON RPC",
+      "description": "Solana JSON RPC API methods. All methods use JSON-RPC 2.0 over HTTP POST."
+    }
+  ]
+}
