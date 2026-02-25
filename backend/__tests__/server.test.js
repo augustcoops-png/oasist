@@ -3,6 +3,7 @@
 const request = require("supertest");
 const { buildApp } = require("../server");
 
+// ─── GET /openapi.json ────────────────────────────────────────────────────────
 describe("GET /openapi.json", () => {
   const app = buildApp();
 
@@ -37,9 +38,25 @@ describe("GET /openapi.json", () => {
   });
 });
 
-describe("POST /", () => {
-  // Use a custom rpcUrl that will always fail to connect so we can test the
-  // upstream-error branch without making real network calls.
+// ─── GET /health ──────────────────────────────────────────────────────────────
+describe("GET /health", () => {
+  const app = buildApp();
+
+  it("returns 200 with status ok", async () => {
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+
+  it("sets CORS header", async () => {
+    const res = await request(app).get("/health");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+  });
+});
+
+// ─── POST / single request ────────────────────────────────────────────────────
+describe("POST / (single request)", () => {
+  // Port 19999 is intentionally unreachable so proxy tests don't hit the network.
   const app = buildApp("http://127.0.0.1:19999");
 
   it("returns 400 for a missing jsonrpc field", async () => {
@@ -66,6 +83,15 @@ describe("POST /", () => {
     expect(res.body.error.code).toBe(-32600);
   });
 
+  it("returns 400 with -32601 for an unknown method", async () => {
+    const res = await request(app)
+      .post("/")
+      .send({ jsonrpc: "2.0", id: 2, method: "notARealMethod" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(-32601);
+    expect(res.body.id).toBe(2);
+  });
+
   it("returns 502 when upstream is unreachable", async () => {
     const res = await request(app)
       .post("/")
@@ -82,6 +108,52 @@ describe("POST /", () => {
   });
 });
 
+// ─── POST / batch request ─────────────────────────────────────────────────────
+describe("POST / (batch request)", () => {
+  const app = buildApp("http://127.0.0.1:19999");
+
+  it("returns 400 for an empty batch array", async () => {
+    const res = await request(app).post("/").send([]);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(-32600);
+  });
+
+  it("returns inline -32601 for an unknown method inside a batch", async () => {
+    const res = await request(app)
+      .post("/")
+      .send([{ jsonrpc: "2.0", id: 10, method: "ghost" }]);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].error.code).toBe(-32601);
+    expect(res.body[0].id).toBe(10);
+  });
+
+  it("returns inline -32600 for a malformed item inside a batch", async () => {
+    const res = await request(app)
+      .post("/")
+      .send([{ id: 5 }]); // missing jsonrpc and method
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].error.code).toBe(-32600);
+  });
+
+  it("proxies valid batch items to upstream and returns array", async () => {
+    // Both items are structurally valid — upstream will refuse the connection,
+    // so each item comes back as a -32603 upstream error.
+    const res = await request(app)
+      .post("/")
+      .send([
+        { jsonrpc: "2.0", id: 1, method: "getBalance", params: ["pub1"] },
+        { jsonrpc: "2.0", id: 2, method: "getSlot" },
+      ]);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(2);
+    res.body.forEach((r) => {
+      expect(r.error.code).toBe(-32603);
+    });
+  });
+});
+
+// ─── OPTIONS preflight ────────────────────────────────────────────────────────
 describe("OPTIONS preflight", () => {
   const app = buildApp();
 
