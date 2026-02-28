@@ -3,6 +3,8 @@
 use {
     bip39::{Mnemonic, MnemonicType, Seed},
     clap::{crate_description, crate_name, value_parser, Arg, ArgMatches, Command},
+    libsecp256k1::{PublicKey, SecretKey},
+    sha3::{Digest, Keccak256},
     solana_clap_v3_utils::{
         input_parsers::STDOUT_OUTFILE_TOKEN,
         input_validators::is_prompt_signer_source,
@@ -80,6 +82,22 @@ fn get_keypair_from_matches(
     signer_from_path(matches, path, "pubkey recovery", wallet_manager)
 }
 
+fn get_local_keypair_from_matches(
+    matches: &ArgMatches,
+    config: Config,
+) -> Result<Keypair, Box<dyn error::Error>> {
+    let mut path = dirs_next::home_dir().expect("home directory");
+    let path = if matches.is_present("keypair") {
+        matches.value_of("keypair").unwrap()
+    } else if !config.keypair_path.is_empty() {
+        &config.keypair_path
+    } else {
+        path.extend([".config", "solana", "id.json"]);
+        path.to_str().unwrap()
+    };
+    keypair_from_path(matches, path, "keypair", false /* confirm_pubkey */)
+}
+
 fn output_keypair(
     keypair: &Keypair,
     outfile: &str,
@@ -93,6 +111,18 @@ fn output_keypair(
         println!("Wrote {source} keypair to {outfile}");
     }
     Ok(())
+}
+
+fn keypair_to_eth_address(keypair: &Keypair) -> Result<String, Box<dyn error::Error>> {
+    let keypair_bytes = keypair.to_bytes();
+    let secret_key = SecretKey::parse_slice(&keypair_bytes[..32])
+        .map_err(|e| format!("Failed to parse secret key as secp256k1: {e}"))?;
+    let public_key = PublicKey::from_secret_key(&secret_key);
+    // Serialize uncompressed (65 bytes), skip the 0x04 prefix byte
+    let pub_bytes = &public_key.serialize()[1..];
+    let hash = Keccak256::digest(pub_bytes);
+    // Ethereum address is the last 20 bytes of the keccak256 hash
+    Ok(format!("0x{}", hex::encode(&hash[12..])))
 }
 
 fn grind_validator_starts_with(v: &str) -> Result<(), String> {
@@ -393,6 +423,23 @@ fn app<'a>(num_threads: &'a str, crate_version: &'a str) -> Command<'a> {
                 )
         )
         .subcommand(
+            Command::new("ethereum-address")
+                .about("Display the Ethereum address derived from a keypair file")
+                .disable_version_flag(true)
+                .arg(
+                    Arg::new("keypair")
+                        .index(1)
+                        .value_name("KEYPAIR")
+                        .takes_value(true)
+                        .help("Filepath or URL to a keypair"),
+                )
+                .arg(
+                    Arg::new(SKIP_SEED_PHRASE_VALIDATION_ARG.name)
+                        .long(SKIP_SEED_PHRASE_VALIDATION_ARG.long)
+                        .help(SKIP_SEED_PHRASE_VALIDATION_ARG.help),
+                )
+        )
+        .subcommand(
             Command::new("recover")
                 .about("Recover keypair from seed phrase and optional BIP39 passphrase")
                 .disable_version_flag(true)
@@ -458,6 +505,11 @@ fn do_main(matches: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
             } else {
                 println!("{pubkey}");
             }
+        }
+        ("ethereum-address", matches) => {
+            let keypair = get_local_keypair_from_matches(matches, config)?;
+            let eth_address = keypair_to_eth_address(&keypair)?;
+            println!("{eth_address}");
         }
         ("new", matches) => {
             let mut path = dirs_next::home_dir().expect("home directory");
@@ -977,6 +1029,33 @@ mod tests {
             let expected = format!("Refusing to overwrite {outfile_path} without --force flag");
             assert_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn test_ethereum_address() {
+        let keypair_out_dir = tempdir().unwrap();
+        let config_out_dir = tempdir().unwrap();
+        let (_, keypair_path, config_path) =
+            create_tmp_keypair_and_config_file(&keypair_out_dir, &config_out_dir);
+
+        // success case using a keypair file
+        process_test_command(&["solana-keygen", "ethereum-address", &keypair_path]).unwrap();
+
+        // success case using a config file
+        process_test_command(&[
+            "solana-keygen",
+            "ethereum-address",
+            "--config",
+            &config_path,
+        ])
+        .unwrap();
+
+        // verify output format is a valid Ethereum address (0x + 40 hex chars)
+        let keypair = Keypair::new();
+        let eth_address = keypair_to_eth_address(&keypair).unwrap();
+        assert!(eth_address.starts_with("0x"));
+        assert_eq!(eth_address.len(), 42); // "0x" + 40 hex characters
+        assert!(eth_address[2..].chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]

@@ -13,7 +13,10 @@ edition = { workspace = true }
 bs58 = { workspace = true }
 clap = { version = "3.1.5", features = ["cargo"] }
 dirs-next = { workspace = true }
+hex = { workspace = true }
+libsecp256k1 = { workspace = true }
 num_cpus = { workspace = true }
+sha3 = { workspace = true }
 solana-clap-v3-utils = { workspace = true }
 solana-cli-config = { workspace = true }
 solana-remote-wallet = { workspace = true, features = ["default"] }
